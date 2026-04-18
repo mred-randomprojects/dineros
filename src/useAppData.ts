@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import type {
   AppData,
   Account,
@@ -8,28 +8,108 @@ import type {
 } from "./types";
 import { generateId } from "./types";
 import { loadAppData, saveAppData, StorageQuotaError } from "./storage";
+import { loadCloudData, saveCloudData } from "./cloudStorage";
+import { mergeAppData } from "./mergeAppData";
+import { useAuth } from "./auth";
 
 /**
- * Central hook that owns all app state and persists to localStorage.
+ * Central hook that owns all app state and persists to both
+ * localStorage (immediate, offline-capable) and Firestore (async, cloud sync).
  * Every mutation returns a new AppData (immutable updates).
  */
 export function useAppData() {
+  const { user } = useAuth();
   const [data, setData] = useState<AppData>(loadAppData);
   const [storageError, setStorageError] = useState<string | null>(null);
+  const [cloudSynced, setCloudSynced] = useState(false);
+  const cloudSaveInFlight = useRef(false);
+  const pendingCloudSave = useRef<AppData | null>(null);
+  const [cloudSyncing, setCloudSyncing] = useState(false);
 
-  const persist = useCallback((next: AppData) => {
-    try {
-      saveAppData(next);
-      setData(next);
-      setStorageError(null);
-    } catch (e) {
-      if (e instanceof StorageQuotaError) {
-        setStorageError(e.message);
-      } else {
-        throw e;
+  const flushCloudSave = useCallback(
+    (uid: string, dataToSave: AppData) => {
+      cloudSaveInFlight.current = true;
+      setCloudSyncing(true);
+      saveCloudData(uid, dataToSave)
+        .catch((err: unknown) => {
+          console.error("[cloud-sync] save failed:", err);
+        })
+        .finally(() => {
+          const queued = pendingCloudSave.current;
+          pendingCloudSave.current = null;
+          if (queued != null) {
+            flushCloudSave(uid, queued);
+          } else {
+            cloudSaveInFlight.current = false;
+            setCloudSyncing(false);
+          }
+        });
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (user == null || cloudSynced) return;
+
+    let cancelled = false;
+    loadCloudData(user.uid)
+      .then((cloudData) => {
+        if (cancelled) return;
+        const local = loadAppData();
+        if (cloudData != null) {
+          const merged = mergeAppData(local, cloudData);
+          setData(merged);
+          saveAppData(merged);
+          saveCloudData(user.uid, merged).catch((err: unknown) =>
+            console.error("[cloud-sync] initial merge push failed:", err),
+          );
+        } else {
+          saveCloudData(user.uid, local).catch((err: unknown) =>
+            console.error("[cloud-sync] initial upload failed:", err),
+          );
+        }
+        setCloudSynced(true);
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        console.error("[cloud-sync] initial load failed:", err);
+        setCloudSynced(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user, cloudSynced]);
+
+  const persist = useCallback(
+    (next: AppData) => {
+      try {
+        saveAppData(next);
+        setData(next);
+        setStorageError(null);
+      } catch (e) {
+        if (e instanceof StorageQuotaError) {
+          setStorageError(e.message);
+        } else {
+          throw e;
+        }
       }
-    }
-  }, []);
+
+      if (user != null) {
+        if (cloudSaveInFlight.current) {
+          pendingCloudSave.current = next;
+        } else {
+          flushCloudSave(user.uid, next);
+        }
+      }
+    },
+    [user, flushCloudSave],
+  );
+
+  const forceCloudSync = useCallback(() => {
+    if (user == null) return;
+    flushCloudSave(user.uid, data);
+  }, [user, data, flushCloudSave]);
 
   const accountBalances = useMemo(() => {
     const balances = new Map<AccountId, number>();
@@ -149,8 +229,10 @@ export function useAppData() {
   return {
     data,
     storageError,
+    cloudSyncing,
     accountBalances,
     accountsMap,
+    forceCloudSync,
     addAccount,
     updateAccount,
     deleteAccount,

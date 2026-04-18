@@ -1,11 +1,40 @@
 import { useEffect } from "react";
 import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
+import { Loader2, CloudUpload } from "lucide-react";
 import { useAppData } from "./useAppData";
+import { AuthProvider, useAuth } from "./auth";
 import { NavBar } from "./components/NavBar";
 import { Accounts } from "./components/Accounts";
 import { Transactions } from "./components/Transactions";
+import { LoginPage } from "./components/LoginPage";
 
 export default function App() {
+  return (
+    <AuthProvider>
+      <AuthGate />
+    </AuthProvider>
+  );
+}
+
+function AuthGate() {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="flex min-h-dvh items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (user == null) {
+    return <LoginPage />;
+  }
+
+  return <AuthenticatedApp />;
+}
+
+function AuthenticatedApp() {
   const appData = useAppData();
   const navigate = useNavigate();
 
@@ -53,6 +82,19 @@ export default function App() {
           </button>
         </div>
       )}
+
+      <button
+        onClick={appData.forceCloudSync}
+        disabled={appData.cloudSyncing}
+        className="fixed bottom-20 right-3 z-40 flex items-center gap-1.5 rounded-full bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow-lg active:scale-95 disabled:opacity-50"
+      >
+        {appData.cloudSyncing ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        ) : (
+          <CloudUpload className="h-3.5 w-3.5" />
+        )}
+        Sync
+      </button>
 
       <NavBar />
     </div>

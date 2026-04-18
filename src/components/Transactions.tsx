@@ -163,6 +163,7 @@ export function Transactions({ appData }: TransactionsProps) {
         if (idx != null) {
           const tx = flatTransactionsRef.current[idx];
           if (tx != null) {
+            e.preventDefault();
             setEditingTransaction(tx);
           }
         }
