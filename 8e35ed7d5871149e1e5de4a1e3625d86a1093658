@@ -1,0 +1,45 @@
+src/components/Transactions.tsx
+  29f7b1f58c8e8190 166
+src/cloudStorage.ts
+  29f7b1f58c8e8190 1-45
+src/components/LoginPage.tsx
+  29f7b1f58c8e8190 1-40
+src/useAppData.ts
+  29f7b1f58c8e8190 1,11-13,16-17,21,24-27,29-95,97-112,232,235
+.env.example
+  29f7b1f58c8e8190 1-6
+src/App.tsx
+  29f7b1f58c8e8190 3,5,9,12-37,86-97
+.github/workflows/deploy.yml
+  29f7b1f58c8e8190 1-60
+src/auth.tsx
+  29f7b1f58c8e8190 1-62
+src/mergeAppData.ts
+  29f7b1f58c8e8190 1-37
+deploy.sh
+  29f7b1f58c8e8190 1-40
+.gitignore
+  29f7b1f58c8e8190 5
+src/firebase.ts
+  29f7b1f58c8e8190 1-17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "8e35ed7d5871149e1e5de4a1e3625d86a1093658",
+  "prompts": {
+    "29f7b1f58c8e8190": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "72e9b3e6-bdd4-4f74-8c05-c0a92170cdc2",
+        "model": "claude-4.6-opus-high-thinking"
+      },
+      "human_author": "Maximiliano Redigonda",
+      "messages": [],
+      "total_additions": 447,
+      "total_deletions": 14,
+      "accepted_lines": 447,
+      "overriden_lines": 0
+    }
+  }
+}
