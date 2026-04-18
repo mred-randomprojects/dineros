@@ -1,0 +1,162 @@
+import { useState, useCallback, useMemo } from "react";
+import type {
+  AppData,
+  Account,
+  AccountId,
+  Transaction,
+  TransactionId,
+} from "./types";
+import { generateId } from "./types";
+import { loadAppData, saveAppData, StorageQuotaError } from "./storage";
+
+/**
+ * Central hook that owns all app state and persists to localStorage.
+ * Every mutation returns a new AppData (immutable updates).
+ */
+export function useAppData() {
+  const [data, setData] = useState<AppData>(loadAppData);
+  const [storageError, setStorageError] = useState<string | null>(null);
+
+  const persist = useCallback((next: AppData) => {
+    try {
+      saveAppData(next);
+      setData(next);
+      setStorageError(null);
+    } catch (e) {
+      if (e instanceof StorageQuotaError) {
+        setStorageError(e.message);
+      } else {
+        throw e;
+      }
+    }
+  }, []);
+
+  const accountBalances = useMemo(() => {
+    const balances = new Map<AccountId, number>();
+    for (const account of data.accounts) {
+      balances.set(account.id, 0);
+    }
+    for (const tx of data.transactions) {
+      if (tx.fromAccountId != null) {
+        const current = balances.get(tx.fromAccountId) ?? 0;
+        balances.set(tx.fromAccountId, current - tx.amount);
+      }
+      if (tx.toAccountId != null) {
+        const current = balances.get(tx.toAccountId) ?? 0;
+        balances.set(tx.toAccountId, current + tx.amount);
+      }
+    }
+    return balances;
+  }, [data.accounts, data.transactions]);
+
+  const accountsMap = useMemo(() => {
+    const map = new Map<AccountId, Account>();
+    for (const account of data.accounts) {
+      map.set(account.id, account);
+    }
+    return map;
+  }, [data.accounts]);
+
+  // --- Account CRUD ---
+
+  const addAccount = useCallback(
+    (input: Omit<Account, "id" | "createdAt">) => {
+      const newAccount: Account = {
+        ...input,
+        id: generateId() as AccountId,
+        createdAt: new Date().toISOString(),
+      };
+      persist({ ...data, accounts: [...data.accounts, newAccount] });
+      return newAccount;
+    },
+    [data, persist],
+  );
+
+  const updateAccount = useCallback(
+    (
+      accountId: AccountId,
+      updates: Partial<Omit<Account, "id" | "createdAt">>,
+    ) => {
+      persist({
+        ...data,
+        accounts: data.accounts.map((a) =>
+          a.id === accountId ? { ...a, ...updates } : a,
+        ),
+      });
+    },
+    [data, persist],
+  );
+
+  const deleteAccount = useCallback(
+    (accountId: AccountId) => {
+      persist({
+        ...data,
+        accounts: data.accounts.filter((a) => a.id !== accountId),
+        transactions: data.transactions.filter(
+          (tx) =>
+            tx.fromAccountId !== accountId && tx.toAccountId !== accountId,
+        ),
+      });
+    },
+    [data, persist],
+  );
+
+  // --- Transaction CRUD ---
+
+  const addTransaction = useCallback(
+    (input: Omit<Transaction, "id" | "createdAt">) => {
+      const newTransaction: Transaction = {
+        ...input,
+        id: generateId() as TransactionId,
+        createdAt: new Date().toISOString(),
+      };
+      persist({
+        ...data,
+        transactions: [...data.transactions, newTransaction],
+      });
+      return newTransaction;
+    },
+    [data, persist],
+  );
+
+  const updateTransaction = useCallback(
+    (
+      transactionId: TransactionId,
+      updates: Partial<Omit<Transaction, "id" | "createdAt">>,
+    ) => {
+      persist({
+        ...data,
+        transactions: data.transactions.map((tx) =>
+          tx.id === transactionId ? { ...tx, ...updates } : tx,
+        ),
+      });
+    },
+    [data, persist],
+  );
+
+  const deleteTransaction = useCallback(
+    (transactionId: TransactionId) => {
+      persist({
+        ...data,
+        transactions: data.transactions.filter(
+          (tx) => tx.id !== transactionId,
+        ),
+      });
+    },
+    [data, persist],
+  );
+
+  return {
+    data,
+    storageError,
+    accountBalances,
+    accountsMap,
+    addAccount,
+    updateAccount,
+    deleteAccount,
+    addTransaction,
+    updateTransaction,
+    deleteTransaction,
+    setStorageError,
+  };
+}
