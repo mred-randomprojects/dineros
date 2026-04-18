@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { format, parseISO } from "date-fns";
 import {
   Plus,
@@ -9,7 +9,7 @@ import {
   TrendingDown,
 } from "lucide-react";
 import type { AppDataHandle } from "../appDataType";
-import type { AccountId, Transaction } from "../types";
+import type { AccountId, Transaction, TransactionId } from "../types";
 import { formatAmount } from "../types";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
@@ -36,6 +36,15 @@ interface DateGroup {
   transactions: Transaction[];
 }
 
+function isInteractiveTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  const tag = target.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+  if (target.isContentEditable) return true;
+  if (target.closest('[role="dialog"]') != null) return true;
+  return false;
+}
+
 export function Transactions({ appData }: TransactionsProps) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<
@@ -46,6 +55,7 @@ export function Transactions({ appData }: TransactionsProps) {
   >(undefined);
   const [filterAccountId, setFilterAccountId] =
     useState<string>(ALL_ACCOUNTS_VALUE);
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
 
   const filteredTransactions = useMemo(() => {
     if (filterAccountId === ALL_ACCOUNTS_VALUE) {
@@ -81,6 +91,89 @@ export function Transactions({ appData }: TransactionsProps) {
       transactions,
     }));
   }, [filteredTransactions]);
+
+  const flatTransactions = useMemo(
+    () => dateGroups.flatMap((g) => g.transactions),
+    [dateGroups],
+  );
+
+  const txFlatIndexMap = useMemo(() => {
+    const map = new Map<TransactionId, number>();
+    let idx = 0;
+    for (const group of dateGroups) {
+      for (const tx of group.transactions) {
+        map.set(tx.id, idx++);
+      }
+    }
+    return map;
+  }, [dateGroups]);
+
+  // Clamp selection when transactions change
+  useEffect(() => {
+    if (selectedIndex != null && selectedIndex >= flatTransactions.length) {
+      setSelectedIndex(
+        flatTransactions.length > 0 ? flatTransactions.length - 1 : null,
+      );
+    }
+  }, [selectedIndex, flatTransactions.length]);
+
+  // Reset selection when filter changes
+  useEffect(() => {
+    setSelectedIndex(null);
+  }, [filterAccountId]);
+
+  // Scroll selected transaction into view
+  useEffect(() => {
+    if (selectedIndex == null) return;
+    const tx = flatTransactions[selectedIndex];
+    if (tx == null) return;
+    document
+      .getElementById(`tx-${tx.id}`)
+      ?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [selectedIndex, flatTransactions]);
+
+  // Keyboard navigation: Arrow keys to select, E to edit
+  const flatTransactionsRef = useRef(flatTransactions);
+  flatTransactionsRef.current = flatTransactions;
+  const selectedIndexRef = useRef(selectedIndex);
+  selectedIndexRef.current = selectedIndex;
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (isInteractiveTarget(e.target)) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+      const len = flatTransactionsRef.current.length;
+      if (len === 0) return;
+
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setSelectedIndex((prev) => {
+          if (prev == null) return 0;
+          return Math.min(prev + 1, len - 1);
+        });
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setSelectedIndex((prev) => {
+          if (prev == null || prev === 0) return null;
+          return prev - 1;
+        });
+      } else if (e.key === "e" || e.key === "E") {
+        const idx = selectedIndexRef.current;
+        if (idx != null) {
+          const tx = flatTransactionsRef.current[idx];
+          if (tx != null) {
+            setEditingTransaction(tx);
+          }
+        }
+      } else if (e.key === "Escape") {
+        setSelectedIndex(null);
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   const handleAddSave = useCallback(
     (tx: Omit<Transaction, "id" | "createdAt">) => {
@@ -165,9 +258,19 @@ export function Transactions({ appData }: TransactionsProps) {
             const isIncome = tx.fromAccountId == null;
             const isExpense = tx.toAccountId == null;
             const currency = transactionCurrency(tx);
+            const flatIdx = txFlatIndexMap.get(tx.id);
+            const isSelected = flatIdx === selectedIndex;
 
             return (
-              <Card key={tx.id} className="p-3">
+              <Card
+                key={tx.id}
+                id={`tx-${tx.id}`}
+                className={cn(
+                  "p-3 transition-shadow",
+                  isSelected && "ring-2 ring-primary",
+                )}
+                onClick={() => setSelectedIndex(flatIdx ?? null)}
+              >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5 text-sm">
@@ -208,7 +311,10 @@ export function Transactions({ appData }: TransactionsProps) {
                       variant="ghost"
                       size="icon"
                       className="h-7 w-7"
-                      onClick={() => setEditingTransaction(tx)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingTransaction(tx);
+                      }}
                     >
                       <Pencil className="h-3 w-3" />
                     </Button>
@@ -216,7 +322,10 @@ export function Transactions({ appData }: TransactionsProps) {
                       variant="ghost"
                       size="icon"
                       className="h-7 w-7 text-destructive hover:text-destructive"
-                      onClick={() => setDeletingTransaction(tx)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDeletingTransaction(tx);
+                      }}
                     >
                       <Trash2 className="h-3 w-3" />
                     </Button>

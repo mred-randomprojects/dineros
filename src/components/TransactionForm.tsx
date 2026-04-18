@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { format } from "date-fns";
 import type { Account, AccountId, Transaction } from "../types";
 import {
@@ -12,13 +12,8 @@ import {
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "./ui/select";
+import { Combobox, type ComboboxOption } from "./ui/combobox";
+import { focusNextInForm } from "@/lib/utils";
 
 const NONE_VALUE = "__none__";
 
@@ -53,6 +48,16 @@ export function TransactionForm({
     }
   }, [open, transaction]);
 
+  const fromOptions = useMemo((): ComboboxOption[] => [
+    { value: NONE_VALUE, label: "None (income / initial balance)" },
+    ...accounts.map((a) => ({ value: a.id, label: `${a.name} (${a.currency})` })),
+  ], [accounts]);
+
+  const toOptions = useMemo((): ComboboxOption[] => [
+    { value: NONE_VALUE, label: "None (expense)" },
+    ...accounts.map((a) => ({ value: a.id, label: `${a.name} (${a.currency})` })),
+  ], [accounts]);
+
   const isEditing = transaction != null;
   const parsedAmount = parseFloat(amount);
   const hasValidAmount = !isNaN(parsedAmount) && parsedAmount > 0;
@@ -82,6 +87,16 @@ export function TransactionForm({
     onOpenChange(false);
   }
 
+  function handleDateKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      e.currentTarget.showPicker();
+    } else if (e.key === "Tab") {
+      e.preventDefault();
+      focusNextInForm(e.currentTarget, e.shiftKey);
+    }
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
@@ -97,51 +112,23 @@ export function TransactionForm({
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="tx-date">Date</Label>
-            <Input
-              id="tx-date"
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
+            <Label>From</Label>
+            <Combobox
+              options={fromOptions}
+              value={fromAccountId}
+              onValueChange={setFromAccountId}
+              placeholder="Search account..."
             />
           </div>
 
           <div className="space-y-2">
-            <Label>From</Label>
-            <Select value={fromAccountId} onValueChange={setFromAccountId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select source" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={NONE_VALUE}>
-                  None (income / initial balance)
-                </SelectItem>
-                {accounts.map((a) => (
-                  <SelectItem key={a.id} value={a.id}>
-                    {a.name} ({a.currency})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
             <Label>To</Label>
-            <Select value={toAccountId} onValueChange={setToAccountId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select destination" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={NONE_VALUE}>
-                  None (expense)
-                </SelectItem>
-                {accounts.map((a) => (
-                  <SelectItem key={a.id} value={a.id}>
-                    {a.name} ({a.currency})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Combobox
+              options={toOptions}
+              value={toAccountId}
+              onValueChange={setToAccountId}
+              placeholder="Search account..."
+            />
           </div>
 
           <div className="space-y-2">
@@ -164,6 +151,18 @@ export function TransactionForm({
               placeholder="e.g. Groceries, Initial balance"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="tx-date">Date</Label>
+            <Input
+              id="tx-date"
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              onClick={(e) => e.currentTarget.showPicker()}
+              onKeyDown={handleDateKeyDown}
             />
           </div>
 
