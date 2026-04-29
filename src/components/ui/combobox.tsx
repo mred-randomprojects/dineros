@@ -50,11 +50,24 @@ export function Combobox({
     setSearch("");
   }
 
-  function selectOption(optionValue: string) {
+  function selectOption(
+    optionValue: string,
+    moveFocus: "next" | "previous" | null = null,
+  ) {
     onValueChange(optionValue);
     setOpen(false);
     setSearch("");
-    inputRef.current?.blur();
+    const input = inputRef.current;
+    if (input == null) return;
+
+    if (moveFocus == null) {
+      input.blur();
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      focusNextInForm(input, moveFocus === "previous");
+    });
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
@@ -68,7 +81,7 @@ export function Combobox({
       e.preventDefault();
       const target = filtered[highlightIndex];
       if (target != null) {
-        selectOption(target.value);
+        selectOption(target.value, e.shiftKey ? "previous" : "next");
       }
     } else if (e.key === "Escape") {
       setOpen(false);

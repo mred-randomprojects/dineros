@@ -15,11 +15,23 @@ import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Combobox, type ComboboxOption } from "./ui/combobox";
 import { focusNextInForm } from "@/lib/utils";
+import { DiscardChangesDialog } from "./DiscardChangesDialog";
 
 const NONE_VALUE = "__none__";
 const CURRENCY_FIELDS = ["fromAmount", "toAmount", "exchangeRate"] as const;
 
 type CurrencyField = (typeof CURRENCY_FIELDS)[number];
+
+interface TransactionFormDraft {
+  date: string;
+  fromAccountId: string;
+  toAccountId: string;
+  category: string;
+  fromAmount: string;
+  toAmount: string;
+  exchangeRate: string;
+  description: string;
+}
 
 interface TransactionFormProps {
   open: boolean;
@@ -47,36 +59,67 @@ export function TransactionForm({
     CurrencyField[]
   >([]);
   const [description, setDescription] = useState("");
+  const [initialDraft, setInitialDraft] =
+    useState<TransactionFormDraft | null>(null);
+  const [discardDialogOpen, setDiscardDialogOpen] = useState(false);
 
   useEffect(() => {
     if (open) {
+      const initialDate = transaction?.date ?? format(new Date(), "yyyy-MM-dd");
+      const initialFromAccountId = transaction?.fromAccountId ?? NONE_VALUE;
+      const initialToAccountId = transaction?.toAccountId ?? NONE_VALUE;
+      const initialCategory = transaction?.category ?? "";
       const initialFromAmount =
         transaction?.fromAmount != null ? String(transaction.fromAmount) : "";
       const initialToAmount =
         transaction?.toAmount != null ? String(transaction.toAmount) : "";
-      setDate(transaction?.date ?? format(new Date(), "yyyy-MM-dd"));
-      setFromAccountId(transaction?.fromAccountId ?? NONE_VALUE);
-      setToAccountId(transaction?.toAccountId ?? NONE_VALUE);
-      setCategory(transaction?.category ?? "");
+      const initialFromAccount = accounts.find(
+        (account) => account.id === initialFromAccountId,
+      );
+      const initialToAccount = accounts.find(
+        (account) => account.id === initialToAccountId,
+      );
+      const initialIsCrossCurrencyTransfer =
+        initialFromAccount != null &&
+        initialToAccount != null &&
+        initialFromAccount.currency !== initialToAccount.currency;
+      const initialExchangeRate =
+        initialIsCrossCurrencyTransfer &&
+        transaction?.fromAmount != null &&
+        transaction.toAmount != null &&
+        transaction.fromAmount > 0 &&
+        transaction.toAmount > 0
+          ? formatDerivedRate(transaction.fromAmount / transaction.toAmount)
+          : "";
+      const initialDescription = transaction?.description ?? "";
+
+      setDate(initialDate);
+      setFromAccountId(initialFromAccountId);
+      setToAccountId(initialToAccountId);
+      setCategory(initialCategory);
       setFromAmount(initialFromAmount);
       setToAmount(initialToAmount);
-      setExchangeRate(
-        transaction?.fromAmount != null &&
-          transaction.toAmount != null &&
-          transaction.fromAmount > 0 &&
-          transaction.toAmount > 0
-          ? formatDerivedRate(transaction.fromAmount / transaction.toAmount)
-          : "",
-      );
+      setExchangeRate(initialExchangeRate);
       setCurrencyFieldOrder(
         [
           initialFromAmount.length > 0 ? "fromAmount" : null,
           initialToAmount.length > 0 ? "toAmount" : null,
         ].filter((field): field is CurrencyField => field != null),
       );
-      setDescription(transaction?.description ?? "");
+      setDescription(initialDescription);
+      setInitialDraft({
+        date: initialDate,
+        fromAccountId: initialFromAccountId,
+        toAccountId: initialToAccountId,
+        category: initialCategory,
+        fromAmount: initialFromAmount,
+        toAmount: initialToAmount,
+        exchangeRate: initialExchangeRate,
+        description: initialDescription,
+      });
+      setDiscardDialogOpen(false);
     }
-  }, [open, transaction]);
+  }, [accounts, open, transaction]);
 
   const fromOptions = useMemo((): ComboboxOption[] => [
     { value: NONE_VALUE, label: "None (income / initial balance)" },
@@ -126,6 +169,17 @@ export function TransactionForm({
     hasValidExchangeRate &&
     hasAtLeastOneAccount &&
     fromAndToDiffer;
+  const isDirty =
+    open &&
+    initialDraft != null &&
+    (date !== initialDraft.date ||
+      fromAccountId !== initialDraft.fromAccountId ||
+      toAccountId !== initialDraft.toAccountId ||
+      category !== initialDraft.category ||
+      fromAmount !== initialDraft.fromAmount ||
+      toAmount !== initialDraft.toAmount ||
+      exchangeRate !== initialDraft.exchangeRate ||
+      description !== initialDraft.description);
 
   useEffect(() => {
     if (isCrossCurrencyTransfer) return;
@@ -216,6 +270,25 @@ export function TransactionForm({
     });
   }
 
+  function closeWithoutPrompt() {
+    setDiscardDialogOpen(false);
+    onOpenChange(false);
+  }
+
+  function handleOpenChange(nextOpen: boolean) {
+    if (nextOpen) {
+      onOpenChange(true);
+      return;
+    }
+
+    if (isDirty) {
+      setDiscardDialogOpen(true);
+      return;
+    }
+
+    closeWithoutPrompt();
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!canSubmit) return;
@@ -234,7 +307,7 @@ export function TransactionForm({
       category: category.trim().length > 0 ? category.trim() : undefined,
       description: description.trim(),
     });
-    onOpenChange(false);
+    closeWithoutPrompt();
   }
 
   function handleDateKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -247,20 +320,27 @@ export function TransactionForm({
     }
   }
 
+  function handleFieldKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    focusNextInForm(e.currentTarget, e.shiftKey);
+  }
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>
-            {isEditing ? "Edit Transaction" : "New Transaction"}
-          </DialogTitle>
-          <DialogDescription>
-            {isEditing
-              ? "Update the transaction details."
-              : "Record a new money movement."}
-          </DialogDescription>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
+    <>
+      <Dialog open={open} onOpenChange={handleOpenChange}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {isEditing ? "Edit Transaction" : "New Transaction"}
+            </DialogTitle>
+            <DialogDescription>
+              {isEditing
+                ? "Update the transaction details."
+                : "Record a new money movement."}
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label>From</Label>
             <Combobox
@@ -296,6 +376,7 @@ export function TransactionForm({
                 onChange={(e) =>
                   updateCurrencyField("fromAmount", e.target.value)
                 }
+                onKeyDown={handleFieldKeyDown}
               />
             </div>
           )}
@@ -315,6 +396,7 @@ export function TransactionForm({
                 onChange={(e) =>
                   updateCurrencyField("toAmount", e.target.value)
                 }
+                onKeyDown={handleFieldKeyDown}
               />
             </div>
           )}
@@ -336,6 +418,7 @@ export function TransactionForm({
                   onChange={(e) =>
                     updateCurrencyField("exchangeRate", e.target.value)
                   }
+                  onKeyDown={handleFieldKeyDown}
                 />
                 <span className="shrink-0 text-sm text-muted-foreground">
                   {selectedFromAccount.currency}
@@ -358,6 +441,7 @@ export function TransactionForm({
               placeholder="e.g. Food, Rent"
               value={category}
               onChange={(e) => setCategory(e.target.value)}
+              onKeyDown={handleFieldKeyDown}
             />
           </div>
 
@@ -368,6 +452,7 @@ export function TransactionForm({
               placeholder="e.g. Groceries, Initial balance"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
+              onKeyDown={handleFieldKeyDown}
             />
           </div>
 
@@ -413,7 +498,7 @@ export function TransactionForm({
             <Button
               type="button"
               variant="outline"
-              onClick={() => onOpenChange(false)}
+              onClick={() => handleOpenChange(false)}
             >
               Cancel
             </Button>
@@ -421,9 +506,17 @@ export function TransactionForm({
               {isEditing ? "Save" : "Add Transaction"}
             </Button>
           </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+          </form>
+        </DialogContent>
+      </Dialog>
+      <DiscardChangesDialog
+        open={discardDialogOpen}
+        title="Discard transaction changes?"
+        description="Closing now will lose the transaction changes you have not saved."
+        onStay={() => setDiscardDialogOpen(false)}
+        onDiscard={closeWithoutPrompt}
+      />
+    </>
   );
 }
 
