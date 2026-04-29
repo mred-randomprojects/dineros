@@ -1,0 +1,55 @@
+src/useAppData.ts
+  ac0651e9451d88e3 152,156,317,326,336,348,352-353,358-363
+  5d98f894fa5115d4 16-18,50-63,202-215,218-222,268,271-277
+src/types.ts
+  5d98f894fa5115d4 29-38,42-43,163-190,196-201,203-219,235-247
+  ac0651e9451d88e3 20-23,52-162,191-195,202,220-234
+src/components/TransactionImportDialog.tsx
+  ac0651e9451d88e3 101-102
+src/storage.ts
+  ac0651e9451d88e3 2,44,55
+  5d98f894fa5115d4 35-36
+src/components/Transactions.tsx
+  ac0651e9451d88e3 14,264-265,307-311,316,321,384,392-439
+src/importTransactionsCsv.ts
+  ac0651e9451d88e3 3-11,19-32,44,57-58,94-102,110,124-125,129-138,153-154,162-181,202-250,258-259,463-465
+src/cloudStorage.ts
+  5d98f894fa5115d4 1,5-9,31-39,51-78
+  ac0651e9451d88e3 4,45
+src/components/TransactionForm.tsx
+  ac0651e9451d88e3 4,43-44,70,76,92-95,101-106,113-121,124-125,230-233,284-295,299-314,318,344-353,396-403,429-433
+  5d98f894fa5115d4 20-22,45-48,53-56,61-69,71-75,96-100,107-109,126,130-217,296-298,315-317,319-343,404-408,434-456
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "a674e6170355f9a3f097a72b3b0c0bbcdc4411e0",
+  "prompts": {
+    "5d98f894fa5115d4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019dda42-7d84-7fb2-8a06-8e1ac3d9ddd7",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Maximiliano Redigonda",
+      "messages": [],
+      "total_additions": 348,
+      "total_deletions": 41,
+      "accepted_lines": 348,
+      "overriden_lines": 0
+    },
+    "ac0651e9451d88e3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019dd998-ffb9-7020-837c-1d7f9765534f",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Maximiliano Redigonda",
+      "messages": [],
+      "total_additions": 463,
+      "total_deletions": 84,
+      "accepted_lines": 429,
+      "overriden_lines": 0
+    }
+  }
+}
