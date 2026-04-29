@@ -1,0 +1,33 @@
+src/types.ts
+  215625ccc399c535 20
+src/useAppData.ts
+  215625ccc399c535 14-25,241-342,356
+src/components/TransactionForm.tsx
+  215625ccc399c535 38,47,65,86,137-143
+src/importTransactionsCsv.ts
+  215625ccc399c535 1-470
+src/components/TransactionImportDialog.tsx
+  215625ccc399c535 1-214
+src/components/Transactions.tsx
+  215625ccc399c535 10,25,58,227-240,313-317,366-369
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "8a35f3095ac5583dc9cc3458fc477cc046acc9a3",
+  "prompts": {
+    "215625ccc399c535": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019dd96a-0991-77a2-81b8-4cb2967c624d",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Maximiliano Redigonda",
+      "messages": [],
+      "total_additions": 850,
+      "total_deletions": 13,
+      "accepted_lines": 842,
+      "overriden_lines": 0
+    }
+  }
+}
