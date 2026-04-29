@@ -17,6 +17,7 @@ export interface Transaction {
   date: string;
   fromAccountId: AccountId | null;
   toAccountId: AccountId | null;
+  category?: string;
   amount: number;
   description: string;
   createdAt: string;

@@ -11,6 +11,18 @@ import { loadAppData, saveAppData, StorageQuotaError } from "./storage";
 import { loadCloudData, saveCloudData } from "./cloudStorage";
 import { mergeAppData } from "./mergeAppData";
 import { useAuth } from "./auth";
+import type { ParsedCsvTransaction } from "./importTransactionsCsv";
+import {
+  accountBaseName,
+  inferCurrencyFromAccountName,
+  normalizeAccountLookupKey,
+} from "./importTransactionsCsv";
+
+export interface ImportTransactionsResult {
+  transactionsImported: number;
+  accountsCreated: number;
+  accountsMatched: number;
+}
 
 /**
  * Central hook that owns all app state and persists to both
@@ -226,6 +238,108 @@ export function useAppData() {
     [data, persist],
   );
 
+  const importTransactions = useCallback(
+    (
+      rows: ReadonlyArray<ParsedCsvTransaction>,
+      defaultCurrency: string,
+    ): ImportTransactionsResult => {
+      const fallbackCurrency = defaultCurrency.trim().toUpperCase() || "ARS";
+      const createdAt = new Date().toISOString();
+      const nextAccounts = [...data.accounts];
+      const exactAccounts = new Map<string, Account>();
+      const baseCurrencyAccounts = new Map<string, Account>();
+      const existingExactAccountKeys = new Set<string>();
+      const existingBaseCurrencyKeys = new Set<string>();
+      const matchedAccountNames = new Set<string>();
+      const createdAccountNames = new Set<string>();
+
+      function indexAccount(account: Account) {
+        exactAccounts.set(normalizeAccountLookupKey(account.name), account);
+        baseCurrencyAccounts.set(
+          `${normalizeAccountLookupKey(accountBaseName(account.name))}|${account.currency.toUpperCase()}`,
+          account,
+        );
+      }
+
+      for (const account of nextAccounts) {
+        indexAccount(account);
+        existingExactAccountKeys.add(normalizeAccountLookupKey(account.name));
+        existingBaseCurrencyKeys.add(
+          `${normalizeAccountLookupKey(accountBaseName(account.name))}|${account.currency.toUpperCase()}`,
+        );
+      }
+
+      function resolveAccountId(accountName: string | null): AccountId | null {
+        if (accountName == null) return null;
+
+        const lookupKey = normalizeAccountLookupKey(accountName);
+        const exactAccount = exactAccounts.get(lookupKey);
+        if (exactAccount != null) {
+          if (existingExactAccountKeys.has(lookupKey)) {
+            matchedAccountNames.add(lookupKey);
+          }
+          return exactAccount.id;
+        }
+
+        const currency = inferCurrencyFromAccountName(accountName, fallbackCurrency);
+        const baseCurrencyKey = `${normalizeAccountLookupKey(accountBaseName(accountName))}|${currency}`;
+        const baseCurrencyAccount = baseCurrencyAccounts.get(baseCurrencyKey);
+        if (baseCurrencyAccount != null) {
+          if (existingBaseCurrencyKeys.has(baseCurrencyKey)) {
+            matchedAccountNames.add(lookupKey);
+          }
+          return baseCurrencyAccount.id;
+        }
+
+        const newAccount: Account = {
+          id: generateId() as AccountId,
+          name: accountName,
+          currency,
+          createdAt,
+        };
+        nextAccounts.push(newAccount);
+        indexAccount(newAccount);
+        createdAccountNames.add(lookupKey);
+        return newAccount.id;
+      }
+
+      const importedTransactions: Transaction[] = rows.map((row) => {
+        let fromAccountId = resolveAccountId(row.fromAccountName);
+        let toAccountId = resolveAccountId(row.toAccountName);
+        let amount = row.amount;
+
+        if (amount < 0) {
+          amount = Math.abs(amount);
+          [fromAccountId, toAccountId] = [toAccountId, fromAccountId];
+        }
+
+        return {
+          id: generateId() as TransactionId,
+          date: row.date,
+          fromAccountId,
+          toAccountId,
+          category: row.category,
+          amount,
+          description: row.description,
+          createdAt,
+        };
+      });
+
+      persist({
+        ...data,
+        accounts: nextAccounts,
+        transactions: [...data.transactions, ...importedTransactions],
+      });
+
+      return {
+        transactionsImported: importedTransactions.length,
+        accountsCreated: createdAccountNames.size,
+        accountsMatched: matchedAccountNames.size,
+      };
+    },
+    [data, persist],
+  );
+
   return {
     data,
     storageError,
@@ -239,6 +353,7 @@ export function useAppData() {
     addTransaction,
     updateTransaction,
     deleteTransaction,
+    importTransactions,
     setStorageError,
   };
 }

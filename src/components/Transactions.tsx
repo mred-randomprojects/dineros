@@ -7,6 +7,7 @@ import {
   Trash2,
   TrendingUp,
   TrendingDown,
+  Upload,
 } from "lucide-react";
 import type { AppDataHandle } from "../appDataType";
 import type { AccountId, Transaction, TransactionId } from "../types";
@@ -21,6 +22,7 @@ import {
   SelectValue,
 } from "./ui/select";
 import { TransactionForm } from "./TransactionForm";
+import { TransactionImportDialog } from "./TransactionImportDialog";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { cn } from "@/lib/utils";
 
@@ -53,6 +55,7 @@ export function Transactions({ appData }: TransactionsProps) {
   const [deletingTransaction, setDeletingTransaction] = useState<
     Transaction | undefined
   >(undefined);
+  const [showImportDialog, setShowImportDialog] = useState(false);
   const [filterAccountId, setFilterAccountId] =
     useState<string>(ALL_ACCOUNTS_VALUE);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
@@ -221,10 +224,20 @@ export function Transactions({ appData }: TransactionsProps) {
     <div className="space-y-4 p-4">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold">Transactions</h1>
-        <Button size="sm" onClick={() => setShowAddForm(true)}>
-          <Plus className="mr-1 h-4 w-4" />
-          Add
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setShowImportDialog(true)}
+          >
+            <Upload className="mr-1 h-4 w-4" />
+            Import
+          </Button>
+          <Button size="sm" onClick={() => setShowAddForm(true)}>
+            <Plus className="mr-1 h-4 w-4" />
+            Add
+          </Button>
+        </div>
       </div>
 
       {appData.data.accounts.length > 0 && (
@@ -297,6 +310,11 @@ export function Transactions({ appData }: TransactionsProps) {
                         {tx.description}
                       </p>
                     )}
+                    {tx.category != null && tx.category.length > 0 && (
+                      <p className="mt-0.5 truncate text-xs font-medium text-primary">
+                        {tx.category}
+                      </p>
+                    )}
                   </div>
                   <div className="flex items-center gap-1">
                     <span
@@ -343,6 +361,12 @@ export function Transactions({ appData }: TransactionsProps) {
         onOpenChange={setShowAddForm}
         onSave={handleAddSave}
         accounts={appData.data.accounts}
+      />
+
+      <TransactionImportDialog
+        open={showImportDialog}
+        onOpenChange={setShowImportDialog}
+        appData={appData}
       />
 
       <TransactionForm

@@ -35,6 +35,7 @@ export function TransactionForm({
   const [date, setDate] = useState("");
   const [fromAccountId, setFromAccountId] = useState<string>(NONE_VALUE);
   const [toAccountId, setToAccountId] = useState<string>(NONE_VALUE);
+  const [category, setCategory] = useState("");
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
 
@@ -43,6 +44,7 @@ export function TransactionForm({
       setDate(transaction?.date ?? format(new Date(), "yyyy-MM-dd"));
       setFromAccountId(transaction?.fromAccountId ?? NONE_VALUE);
       setToAccountId(transaction?.toAccountId ?? NONE_VALUE);
+      setCategory(transaction?.category ?? "");
       setAmount(transaction?.amount != null ? String(transaction.amount) : "");
       setDescription(transaction?.description ?? "");
     }
@@ -60,7 +62,7 @@ export function TransactionForm({
 
   const isEditing = transaction != null;
   const parsedAmount = parseFloat(amount);
-  const hasValidAmount = !isNaN(parsedAmount) && parsedAmount > 0;
+  const hasValidAmount = !isNaN(parsedAmount) && parsedAmount >= 0;
   const hasAtLeastOneAccount =
     fromAccountId !== NONE_VALUE || toAccountId !== NONE_VALUE;
   const fromAndToDiffer = fromAccountId !== toAccountId;
@@ -81,6 +83,7 @@ export function TransactionForm({
           : (fromAccountId as AccountId),
       toAccountId:
         toAccountId === NONE_VALUE ? null : (toAccountId as AccountId),
+      category: category.trim().length > 0 ? category.trim() : undefined,
       amount: parsedAmount,
       description: description.trim(),
     });
@@ -128,6 +131,16 @@ export function TransactionForm({
               value={toAccountId}
               onValueChange={setToAccountId}
               placeholder="Search account..."
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="tx-category">Category</Label>
+            <Input
+              id="tx-category"
+              placeholder="e.g. Food, Rent"
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
             />
           </div>
 
