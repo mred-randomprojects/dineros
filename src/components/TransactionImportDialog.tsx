@@ -98,7 +98,8 @@ export function TransactionImportDialog({
         <DialogHeader>
           <DialogTitle>Import Transactions</DialogTitle>
           <DialogDescription>
-            CSV headers: Date, From, To, Category, Amount, Description.
+            CSV headers: Date, From, To, Category, Amount, From Amount, To
+            Amount, Description.
           </DialogDescription>
         </DialogHeader>
 

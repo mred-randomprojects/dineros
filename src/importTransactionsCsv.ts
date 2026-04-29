@@ -1,6 +1,14 @@
 import type { Account } from "./types";
 
-type CsvColumn = "date" | "from" | "to" | "category" | "amount" | "description";
+type CsvColumn =
+  | "date"
+  | "from"
+  | "to"
+  | "category"
+  | "amount"
+  | "fromAmount"
+  | "toAmount"
+  | "description";
 
 const HEADER_ALIASES: Record<CsvColumn, string[]> = {
   date: ["date", "fecha"],
@@ -8,6 +16,20 @@ const HEADER_ALIASES: Record<CsvColumn, string[]> = {
   to: ["to", "to account", "destination", "destination account", "a"],
   category: ["category", "categoria"],
   amount: ["amount", "monto", "importe", "value", "valor"],
+  fromAmount: [
+    "from amount",
+    "source amount",
+    "de amount",
+    "monto de",
+    "importe de",
+  ],
+  toAmount: [
+    "to amount",
+    "destination amount",
+    "a amount",
+    "monto a",
+    "importe a",
+  ],
   description: [
     "description",
     "desc",
@@ -19,7 +41,7 @@ const HEADER_ALIASES: Record<CsvColumn, string[]> = {
   ],
 };
 
-const REQUIRED_COLUMNS: CsvColumn[] = ["date", "from", "to", "amount"];
+const REQUIRED_COLUMNS: CsvColumn[] = ["date", "from", "to"];
 
 export interface CsvImportIssue {
   rowNumber: number;
@@ -32,7 +54,8 @@ export interface ParsedCsvTransaction {
   fromAccountName: string | null;
   toAccountName: string | null;
   category?: string;
-  amount: number;
+  fromAmount: number | null;
+  toAmount: number | null;
   description: string;
 }
 
@@ -68,7 +91,15 @@ export function parseTransactionsCsv(csvText: string): ParseTransactionsCsvResul
 
   const columnMap = resolveHeaderMap(rows[0]);
   const missingColumns = REQUIRED_COLUMNS.filter((column) => columnMap[column] == null);
-  if (missingColumns.length > 0) {
+  const hasAmountColumn =
+    columnMap.amount != null ||
+    columnMap.fromAmount != null ||
+    columnMap.toAmount != null;
+  if (missingColumns.length > 0 || !hasAmountColumn) {
+    const missingLabels = missingColumns.map((column) => columnLabel(column));
+    if (!hasAmountColumn) {
+      missingLabels.push("Amount (or From Amount / To Amount)");
+    }
     return {
       transactions,
       skippedRowCount,
@@ -76,9 +107,7 @@ export function parseTransactionsCsv(csvText: string): ParseTransactionsCsvResul
       errors: [
         {
           rowNumber: 1,
-          message: `Missing required column(s): ${missingColumns
-            .map((column) => columnLabel(column))
-            .join(", ")}.`,
+          message: `Missing required column(s): ${missingLabels.join(", ")}.`,
         },
       ],
     };
@@ -92,12 +121,21 @@ export function parseTransactionsCsv(csvText: string): ParseTransactionsCsvResul
     const rawTo = cellValue(row, columnMap.to);
     const rawCategory = cellValue(row, columnMap.category);
     const rawAmount = cellValue(row, columnMap.amount);
+    const rawFromAmount = cellValue(row, columnMap.fromAmount);
+    const rawToAmount = cellValue(row, columnMap.toAmount);
     const rawDescription = cellValue(row, columnMap.description);
 
     if (
-      [rawDate, rawFrom, rawTo, rawCategory, rawAmount, rawDescription].every(
-        isBlankOrDash,
-      )
+      [
+        rawDate,
+        rawFrom,
+        rawTo,
+        rawCategory,
+        rawAmount,
+        rawFromAmount,
+        rawToAmount,
+        rawDescription,
+      ].every(isBlankOrDash)
     ) {
       skippedRowCount += 1;
       continue;
@@ -112,8 +150,8 @@ export function parseTransactionsCsv(csvText: string): ParseTransactionsCsvResul
       continue;
     }
 
-    const amount = parseCurrencyAmount(rawAmount);
-    if (amount == null) {
+    const sharedAmount = parseOptionalCurrencyAmount(rawAmount);
+    if (sharedAmount === null) {
       errors.push({
         rowNumber,
         message: `Invalid amount "${rawAmount.trim()}".`,
@@ -121,8 +159,26 @@ export function parseTransactionsCsv(csvText: string): ParseTransactionsCsvResul
       continue;
     }
 
-    const fromAccountName = normalizeImportedAccountName(rawFrom);
-    const toAccountName = normalizeImportedAccountName(rawTo);
+    const fromSpecificAmount = parseOptionalCurrencyAmount(rawFromAmount);
+    if (fromSpecificAmount === null) {
+      errors.push({
+        rowNumber,
+        message: `Invalid from amount "${rawFromAmount.trim()}".`,
+      });
+      continue;
+    }
+
+    const toSpecificAmount = parseOptionalCurrencyAmount(rawToAmount);
+    if (toSpecificAmount === null) {
+      errors.push({
+        rowNumber,
+        message: `Invalid to amount "${rawToAmount.trim()}".`,
+      });
+      continue;
+    }
+
+    let fromAccountName = normalizeImportedAccountName(rawFrom);
+    let toAccountName = normalizeImportedAccountName(rawTo);
     if (fromAccountName == null && toAccountName == null) {
       errors.push({
         rowNumber,
@@ -143,6 +199,55 @@ export function parseTransactionsCsv(csvText: string): ParseTransactionsCsvResul
       continue;
     }
 
+    if (
+      sharedAmount == null &&
+      fromSpecificAmount == null &&
+      toSpecificAmount == null
+    ) {
+      errors.push({
+        rowNumber,
+        message: "Transaction needs an Amount, From Amount, or To Amount.",
+      });
+      continue;
+    }
+
+    let fromAmount = fromSpecificAmount ?? sharedAmount ?? null;
+    let toAmount = toSpecificAmount ?? sharedAmount ?? null;
+
+    if (
+      sharedAmount != null &&
+      sharedAmount < 0 &&
+      fromSpecificAmount == null &&
+      toSpecificAmount == null
+    ) {
+      [fromAccountName, toAccountName] = [toAccountName, fromAccountName];
+      fromAmount = Math.abs(sharedAmount);
+      toAmount = Math.abs(sharedAmount);
+    } else {
+      fromAmount = fromAmount == null ? null : Math.abs(fromAmount);
+      toAmount = toAmount == null ? null : Math.abs(toAmount);
+    }
+
+    if (fromAccountName == null) {
+      fromAmount = null;
+    } else if (fromAmount == null) {
+      errors.push({
+        rowNumber,
+        message: "Transaction needs a From Amount for the From account.",
+      });
+      continue;
+    }
+
+    if (toAccountName == null) {
+      toAmount = null;
+    } else if (toAmount == null) {
+      errors.push({
+        rowNumber,
+        message: "Transaction needs a To Amount for the To account.",
+      });
+      continue;
+    }
+
     const category = rawCategory.trim();
     transactions.push({
       sourceRowNumber: rowNumber,
@@ -150,7 +255,8 @@ export function parseTransactionsCsv(csvText: string): ParseTransactionsCsvResul
       fromAccountName,
       toAccountName,
       category: category.length > 0 && category !== "-" ? category : undefined,
-      amount,
+      fromAmount,
+      toAmount,
       description: rawDescription.trim(),
     });
   }
@@ -352,6 +458,11 @@ function cellValue(row: string[], index: number | undefined): string {
 function isBlankOrDash(value: string): boolean {
   const trimmed = value.trim();
   return trimmed.length === 0 || trimmed === "-";
+}
+
+function parseOptionalCurrencyAmount(value: string): number | null | undefined {
+  if (isBlankOrDash(value)) return undefined;
+  return parseCurrencyAmount(value);
 }
 
 function normalizeImportedAccountName(value: string): string | null {

@@ -13,6 +13,10 @@ import { mergeAppData } from "./mergeAppData";
 import { useAuth } from "./auth";
 import type { ParsedCsvTransaction } from "./importTransactionsCsv";
 import {
+  upsertDeletedAccount,
+  upsertDeletedTransaction,
+} from "./deletedEntries";
+import {
   accountBaseName,
   inferCurrencyFromAccountName,
   normalizeAccountLookupKey,
@@ -43,6 +47,20 @@ export function useAppData() {
       cloudSaveInFlight.current = true;
       setCloudSyncing(true);
       saveCloudData(uid, dataToSave)
+        .then((savedData) => {
+          if (pendingCloudSave.current != null) return;
+          try {
+            saveAppData(savedData);
+            setData(savedData);
+            setStorageError(null);
+          } catch (e) {
+            if (e instanceof StorageQuotaError) {
+              setStorageError(e.message);
+            } else {
+              throw e;
+            }
+          }
+        })
         .catch((err: unknown) => {
           console.error("[cloud-sync] save failed:", err);
         })
@@ -131,11 +149,11 @@ export function useAppData() {
     for (const tx of data.transactions) {
       if (tx.fromAccountId != null) {
         const current = balances.get(tx.fromAccountId) ?? 0;
-        balances.set(tx.fromAccountId, current - tx.amount);
+        balances.set(tx.fromAccountId, current - (tx.fromAmount ?? 0));
       }
       if (tx.toAccountId != null) {
         const current = balances.get(tx.toAccountId) ?? 0;
-        balances.set(tx.toAccountId, current + tx.amount);
+        balances.set(tx.toAccountId, current + (tx.toAmount ?? 0));
       }
     }
     return balances;
@@ -181,8 +199,27 @@ export function useAppData() {
 
   const deleteAccount = useCallback(
     (accountId: AccountId) => {
+      const deletedAt = new Date().toISOString();
+      const transactionsToDelete = data.transactions.filter(
+        (tx) =>
+          tx.fromAccountId === accountId || tx.toAccountId === accountId,
+      );
+      const deletedTransactions = transactionsToDelete.reduce(
+        (entries, tx) =>
+          upsertDeletedTransaction(entries, {
+            transactionId: tx.id,
+            deletedAt,
+          }),
+        data.deletedTransactions ?? [],
+      );
+
       persist({
         ...data,
+        deletedAccounts: upsertDeletedAccount(data.deletedAccounts ?? [], {
+          accountId,
+          deletedAt,
+        }),
+        deletedTransactions,
         accounts: data.accounts.filter((a) => a.id !== accountId),
         transactions: data.transactions.filter(
           (tx) =>
@@ -228,8 +265,16 @@ export function useAppData() {
 
   const deleteTransaction = useCallback(
     (transactionId: TransactionId) => {
+      const deletedAt = new Date().toISOString();
       persist({
         ...data,
+        deletedTransactions: upsertDeletedTransaction(
+          data.deletedTransactions ?? [],
+          {
+            transactionId,
+            deletedAt,
+          },
+        ),
         transactions: data.transactions.filter(
           (tx) => tx.id !== transactionId,
         ),
@@ -269,7 +314,7 @@ export function useAppData() {
         );
       }
 
-      function resolveAccountId(accountName: string | null): AccountId | null {
+      function resolveAccount(accountName: string | null): Account | null {
         if (accountName == null) return null;
 
         const lookupKey = normalizeAccountLookupKey(accountName);
@@ -278,7 +323,7 @@ export function useAppData() {
           if (existingExactAccountKeys.has(lookupKey)) {
             matchedAccountNames.add(lookupKey);
           }
-          return exactAccount.id;
+          return exactAccount;
         }
 
         const currency = inferCurrencyFromAccountName(accountName, fallbackCurrency);
@@ -288,7 +333,7 @@ export function useAppData() {
           if (existingBaseCurrencyKeys.has(baseCurrencyKey)) {
             matchedAccountNames.add(lookupKey);
           }
-          return baseCurrencyAccount.id;
+          return baseCurrencyAccount;
         }
 
         const newAccount: Account = {
@@ -300,26 +345,23 @@ export function useAppData() {
         nextAccounts.push(newAccount);
         indexAccount(newAccount);
         createdAccountNames.add(lookupKey);
-        return newAccount.id;
+        return newAccount;
       }
 
       const importedTransactions: Transaction[] = rows.map((row) => {
-        let fromAccountId = resolveAccountId(row.fromAccountName);
-        let toAccountId = resolveAccountId(row.toAccountName);
-        let amount = row.amount;
-
-        if (amount < 0) {
-          amount = Math.abs(amount);
-          [fromAccountId, toAccountId] = [toAccountId, fromAccountId];
-        }
+        const fromAccount = resolveAccount(row.fromAccountName);
+        const toAccount = resolveAccount(row.toAccountName);
 
         return {
           id: generateId() as TransactionId,
           date: row.date,
-          fromAccountId,
-          toAccountId,
+          fromAccountId: fromAccount?.id ?? null,
+          toAccountId: toAccount?.id ?? null,
+          fromAmount: fromAccount == null ? null : row.fromAmount,
+          toAmount: toAccount == null ? null : row.toAmount,
+          fromCurrency: fromAccount?.currency ?? null,
+          toCurrency: toAccount?.currency ?? null,
           category: row.category,
-          amount,
           description: row.description,
           createdAt,
         };

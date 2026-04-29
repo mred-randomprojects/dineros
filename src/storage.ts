@@ -1,4 +1,5 @@
 import type { AppData } from "./types";
+import { normalizeAppData } from "./types";
 
 const STORAGE_KEY = "dineros-data";
 const BACKUP_KEY = "dineros-data-backup";
@@ -31,6 +32,8 @@ function safeSetItem(key: string, value: string): void {
 const DEFAULT_APP_DATA: AppData = {
   accounts: [],
   transactions: [],
+  deletedAccounts: [],
+  deletedTransactions: [],
 };
 
 export function loadAppData(): AppData {
@@ -38,11 +41,7 @@ export function loadAppData(): AppData {
   if (raw == null) return { ...DEFAULT_APP_DATA };
 
   try {
-    const parsed = JSON.parse(raw) as AppData;
-    return {
-      accounts: parsed.accounts ?? [],
-      transactions: parsed.transactions ?? [],
-    };
+    return normalizeAppData(JSON.parse(raw));
   } catch {
     try {
       localStorage.setItem(CORRUPT_RECOVERY_KEY, raw);
@@ -53,11 +52,7 @@ export function loadAppData(): AppData {
     const backup = localStorage.getItem(BACKUP_KEY);
     if (backup != null) {
       try {
-        const parsed = JSON.parse(backup) as AppData;
-        return {
-          accounts: parsed.accounts ?? [],
-          transactions: parsed.transactions ?? [],
-        };
+        return normalizeAppData(JSON.parse(backup));
       } catch {
         // Backup also corrupt — nothing we can do.
       }

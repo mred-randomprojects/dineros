@@ -1,6 +1,12 @@
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, runTransaction } from "firebase/firestore";
 import { db } from "./firebase";
 import type { AppData } from "./types";
+import { normalizeAppData } from "./types";
+import {
+  filterDeletedEntriesFromAppData,
+  mergeDeletedAccounts,
+  mergeDeletedTransactions,
+} from "./deletedEntries";
 
 /**
  * Recursively strips keys whose value is `undefined` so that
@@ -22,24 +28,52 @@ function userDocRef(uid: string) {
   return doc(db, "users", uid, "data", "appData");
 }
 
+function payloadFromAppData(data: AppData): Record<string, unknown> {
+  return stripUndefined({
+    accounts: data.accounts,
+    transactions: data.transactions,
+    deletedAccounts: data.deletedAccounts,
+    deletedTransactions: data.deletedTransactions,
+  }) as Record<string, unknown>;
+}
+
 export async function loadCloudData(uid: string): Promise<AppData | null> {
   const snap = await getDoc(userDocRef(uid));
   if (!snap.exists()) return null;
   const raw = snap.data();
   if (raw == null) return null;
-  return {
-    accounts: raw.accounts ?? [],
-    transactions: raw.transactions ?? [],
-  };
+  return normalizeAppData(raw);
 }
 
 export async function saveCloudData(
   uid: string,
   data: AppData,
-): Promise<void> {
-  const payload = stripUndefined({
-    accounts: data.accounts,
-    transactions: data.transactions,
-  }) as Record<string, unknown>;
-  await setDoc(userDocRef(uid), payload);
+): Promise<AppData> {
+  const ref = userDocRef(uid);
+
+  return runTransaction(db, async (transaction) => {
+    const snap = await transaction.get(ref);
+    const cloudData = snap.exists() ? normalizeAppData(snap.data()) : null;
+    // Preserve remote tombstones so stale devices cannot resurrect deletes.
+    const deletedAccounts = mergeDeletedAccounts(
+      data.deletedAccounts ?? [],
+      cloudData?.deletedAccounts ?? [],
+    );
+    const deletedTransactions = mergeDeletedTransactions(
+      data.deletedTransactions ?? [],
+      cloudData?.deletedTransactions ?? [],
+    );
+    const filteredData = filterDeletedEntriesFromAppData(
+      {
+        ...data,
+        deletedAccounts,
+        deletedTransactions,
+      },
+      deletedAccounts,
+      deletedTransactions,
+    );
+
+    transaction.set(ref, payloadFromAppData(filteredData));
+    return filteredData;
+  });
 }

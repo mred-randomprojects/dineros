@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import type { AppDataHandle } from "../appDataType";
 import type { AccountId, Transaction, TransactionId } from "../types";
-import { formatAmount } from "../types";
+import { calculateExchangeRate, formatAmount } from "../types";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
 import {
@@ -208,18 +208,6 @@ export function Transactions({ appData }: TransactionsProps) {
     return account.name;
   }
 
-  function transactionCurrency(tx: Transaction): string {
-    const fromAccount =
-      tx.fromAccountId != null
-        ? appData.accountsMap.get(tx.fromAccountId)
-        : undefined;
-    const toAccount =
-      tx.toAccountId != null
-        ? appData.accountsMap.get(tx.toAccountId)
-        : undefined;
-    return fromAccount?.currency ?? toAccount?.currency ?? "";
-  }
-
   return (
     <div className="space-y-4 p-4">
       <div className="flex items-center justify-between">
@@ -271,9 +259,10 @@ export function Transactions({ appData }: TransactionsProps) {
           {group.transactions.map((tx) => {
             const isIncome = tx.fromAccountId == null;
             const isExpense = tx.toAccountId == null;
-            const currency = transactionCurrency(tx);
             const flatIdx = txFlatIndexMap.get(tx.id);
             const isSelected = flatIdx === selectedIndex;
+            const amountLabel = transactionAmountLabel(tx);
+            const detailLabel = transactionDetailLabel(tx);
 
             return (
               <Card
@@ -315,16 +304,21 @@ export function Transactions({ appData }: TransactionsProps) {
                         {tx.category}
                       </p>
                     )}
+                    {detailLabel != null && (
+                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                        {detailLabel}
+                      </p>
+                    )}
                   </div>
                   <div className="flex items-center gap-1">
                     <span
                       className={cn(
-                        "whitespace-nowrap text-sm font-semibold",
+                        "max-w-[9rem] whitespace-normal text-right text-sm font-semibold leading-tight",
                         isIncome && "text-emerald-400",
                         isExpense && "text-destructive",
                       )}
                     >
-                      {formatAmount(tx.amount)} {currency}
+                      {amountLabel}
                     </span>
                     <Button
                       variant="ghost"
@@ -387,11 +381,60 @@ export function Transactions({ appData }: TransactionsProps) {
         title="Delete Transaction"
         description={
           deletingTransaction != null
-            ? `Delete this transaction of ${formatAmount(deletingTransaction.amount)} from ${accountLabel(deletingTransaction.fromAccountId)} to ${accountLabel(deletingTransaction.toAccountId)}?`
+            ? `Delete this transaction of ${transactionAmountLabel(deletingTransaction)} from ${accountLabel(deletingTransaction.fromAccountId)} to ${accountLabel(deletingTransaction.toAccountId)}?`
             : ""
         }
         onConfirm={handleDelete}
       />
     </div>
   );
+}
+
+function transactionAmountLabel(tx: Transaction): string {
+  const fromLabel =
+    tx.fromAmount == null
+      ? null
+      : `${formatAmount(tx.fromAmount)} ${tx.fromCurrency ?? ""}`.trim();
+  const toLabel =
+    tx.toAmount == null
+      ? null
+      : `${formatAmount(tx.toAmount)} ${tx.toCurrency ?? ""}`.trim();
+
+  if (fromLabel == null) return toLabel ?? "0.00";
+  if (toLabel == null) return fromLabel;
+  if (tx.fromCurrency === tx.toCurrency && tx.fromAmount === tx.toAmount) {
+    return fromLabel;
+  }
+  return `${fromLabel} -> ${toLabel}`;
+}
+
+function transactionDetailLabel(tx: Transaction): string | null {
+  const exchangeRate = calculateExchangeRate(tx);
+  if (
+    exchangeRate != null &&
+    tx.fromCurrency != null &&
+    tx.toCurrency != null &&
+    tx.fromCurrency !== tx.toCurrency
+  ) {
+    return `1 ${tx.toCurrency} = ${formatRate(exchangeRate)} ${tx.fromCurrency}`;
+  }
+
+  if (
+    tx.fromAmount != null &&
+    tx.toAmount != null &&
+    tx.fromCurrency != null &&
+    tx.fromCurrency === tx.toCurrency &&
+    tx.fromAmount > tx.toAmount
+  ) {
+    return `Difference: ${formatAmount(tx.fromAmount - tx.toAmount)} ${tx.fromCurrency}`;
+  }
+
+  return null;
+}
+
+function formatRate(value: number): string {
+  return new Intl.NumberFormat(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 6,
+  }).format(value);
 }
