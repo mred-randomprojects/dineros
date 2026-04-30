@@ -8,17 +8,21 @@ export interface ComboboxOption {
 }
 
 interface ComboboxProps {
+  id?: string;
   options: ReadonlyArray<ComboboxOption>;
   value: string;
   onValueChange: (value: string) => void;
   placeholder?: string;
+  allowCustomValue?: boolean;
 }
 
 export function Combobox({
+  id,
   options,
   value,
   onValueChange,
   placeholder,
+  allowCustomValue = false,
 }: ComboboxProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -26,7 +30,7 @@ export function Combobox({
   const inputRef = useRef<HTMLInputElement>(null);
 
   const selectedLabel = useMemo(
-    () => options.find((o) => o.value === value)?.label ?? "",
+    () => options.find((o) => o.value === value)?.label ?? value,
     [options, value],
   );
 
@@ -42,12 +46,20 @@ export function Combobox({
 
   function handleFocus() {
     setOpen(true);
-    setSearch("");
+    setSearch(allowCustomValue ? value : "");
   }
 
   function handleBlur() {
     setOpen(false);
     setSearch("");
+  }
+
+  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const nextSearch = e.target.value;
+    setSearch(nextSearch);
+    if (allowCustomValue) {
+      onValueChange(nextSearch);
+    }
   }
 
   function selectOption(
@@ -82,6 +94,12 @@ export function Combobox({
       const target = filtered[highlightIndex];
       if (target != null) {
         selectOption(target.value, e.shiftKey ? "previous" : "next");
+      } else if (allowCustomValue) {
+        setOpen(false);
+        setSearch("");
+        if (inputRef.current != null) {
+          focusNextInForm(inputRef.current, e.shiftKey);
+        }
       }
     } else if (e.key === "Escape") {
       setOpen(false);
@@ -100,13 +118,14 @@ export function Combobox({
   return (
     <div className="relative">
       <input
+        id={id}
         ref={inputRef}
         className={cn(
           "flex h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
         )}
         value={open ? search : selectedLabel}
         placeholder={placeholder}
-        onChange={(e) => setSearch(e.target.value)}
+        onChange={handleChange}
         onFocus={handleFocus}
         onBlur={handleBlur}
         onKeyDown={handleKeyDown}

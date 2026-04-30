@@ -1,5 +1,6 @@
 export type AccountId = string & { readonly __brand: "AccountId" };
 export type TransactionId = string & { readonly __brand: "TransactionId" };
+export type CategoryId = string & { readonly __brand: "CategoryId" };
 
 export function generateId(): string {
   return crypto.randomUUID();
@@ -9,6 +10,12 @@ export interface Account {
   id: AccountId;
   name: string;
   currency: string;
+  createdAt: string;
+}
+
+export interface Category {
+  id: CategoryId;
+  name: string;
   createdAt: string;
 }
 
@@ -36,11 +43,29 @@ export interface DeletedTransaction {
   deletedAt: string;
 }
 
+export interface DeletedCategory {
+  categoryId: CategoryId;
+  name: string;
+  deletedAt: string;
+}
+
 export interface AppData {
   accounts: Account[];
+  categories: Category[];
   transactions: Transaction[];
   deletedAccounts: DeletedAccount[];
+  deletedCategories: DeletedCategory[];
   deletedTransactions: DeletedTransaction[];
+}
+
+export function cleanCategoryName(name: string | null | undefined): string {
+  return name?.trim().replace(/\s+/g, " ") ?? "";
+}
+
+export function normalizeCategoryLookupKey(
+  name: string | null | undefined,
+): string {
+  return cleanCategoryName(name).toLocaleLowerCase();
 }
 
 export function formatAmount(amount: number): string {
@@ -105,6 +130,20 @@ function normalizeAccount(raw: unknown): Account | null {
   };
 }
 
+function normalizeCategory(raw: unknown): Category | null {
+  if (!isRecord(raw)) return null;
+
+  const id = stringValue(raw.id);
+  const name = cleanCategoryName(stringValue(raw.name));
+  if (id == null || name.length === 0) return null;
+
+  return {
+    id: id as CategoryId,
+    name,
+    createdAt: stringValue(raw.createdAt) ?? new Date().toISOString(),
+  };
+}
+
 function normalizeTransaction(
   raw: unknown,
   accountCurrencies: ReadonlyMap<AccountId, string>,
@@ -138,6 +177,8 @@ function normalizeTransaction(
       ? null
       : (nullableNumberValue(raw.toAmount) ?? legacyAmount);
 
+  const category = cleanCategoryName(stringValue(raw.category));
+
   return {
     id: id as TransactionId,
     date,
@@ -157,7 +198,7 @@ function normalizeTransaction(
         : (nullableStringValue(raw.toCurrency) ??
           accountCurrencies.get(toAccountId) ??
           null),
-    category: stringValue(raw.category) ?? undefined,
+    category: category.length > 0 ? category : undefined,
     description,
     createdAt,
   };
@@ -191,12 +232,56 @@ function normalizeDeletedTransaction(
   };
 }
 
+function normalizeDeletedCategory(raw: unknown): DeletedCategory | null {
+  if (!isRecord(raw)) return null;
+
+  const categoryId = stringValue(raw.categoryId);
+  const name = cleanCategoryName(stringValue(raw.name));
+  const deletedAt = stringValue(raw.deletedAt);
+  if (categoryId == null || deletedAt == null) return null;
+
+  return {
+    categoryId: categoryId as CategoryId,
+    name,
+    deletedAt,
+  };
+}
+
+function uniqueCategories(categories: ReadonlyArray<Category>): Category[] {
+  const byName = new Map<string, Category>();
+  for (const category of categories) {
+    const key = normalizeCategoryLookupKey(category.name);
+    if (key.length === 0 || byName.has(key)) continue;
+    byName.set(key, { ...category, name: cleanCategoryName(category.name) });
+  }
+  return [...byName.values()];
+}
+
+function deriveCategoriesFromTransactions(
+  transactions: ReadonlyArray<Transaction>,
+): Category[] {
+  const categories = new Map<string, Category>();
+  for (const transaction of transactions) {
+    const name = cleanCategoryName(transaction.category);
+    const key = normalizeCategoryLookupKey(name);
+    if (key.length === 0 || categories.has(key)) continue;
+    categories.set(key, {
+      id: `legacy-category:${key}` as CategoryId,
+      name,
+      createdAt: transaction.createdAt,
+    });
+  }
+  return [...categories.values()];
+}
+
 export function normalizeAppData(raw: unknown): AppData {
   if (!isRecord(raw)) {
     return {
       accounts: [],
+      categories: [],
       transactions: [],
       deletedAccounts: [],
+      deletedCategories: [],
       deletedTransactions: [],
     };
   }
@@ -211,13 +296,20 @@ export function normalizeAppData(raw: unknown): AppData {
         .map(normalizeDeletedTransaction)
         .filter((tx): tx is DeletedTransaction => tx != null)
     : [];
+  const deletedCategories = Array.isArray(raw.deletedCategories)
+    ? raw.deletedCategories
+        .map(normalizeDeletedCategory)
+        .filter((category): category is DeletedCategory => category != null)
+    : [];
   const deletedAccountIds = new Set<AccountId>(
     deletedAccounts.map((entry) => entry.accountId),
   );
   const deletedTransactionIds = new Set<TransactionId>(
     deletedTransactions.map((entry) => entry.transactionId),
   );
-
+  const deletedCategoryIds = new Set<CategoryId>(
+    deletedCategories.map((entry) => entry.categoryId),
+  );
   const accounts = Array.isArray(raw.accounts)
     ? raw.accounts.map(normalizeAccount).filter((a): a is Account => a != null)
     : [];
@@ -231,18 +323,49 @@ export function normalizeAppData(raw: unknown): AppData {
         .map((tx) => normalizeTransaction(tx, accountCurrencies))
         .filter((tx): tx is Transaction => tx != null)
     : [];
-
-  return {
-    accounts: accounts.filter((account) => !deletedAccountIds.has(account.id)),
-    transactions: transactions.filter(
+  const categories = Array.isArray(raw.categories)
+    ? uniqueCategories(
+        raw.categories
+          .map(normalizeCategory)
+          .filter((category): category is Category => category != null),
+      )
+    : [];
+  const liveCategories = categories.filter(
+    (category) => !deletedCategoryIds.has(category.id),
+  );
+  const liveCategoryNames = new Set(
+    liveCategories.map((category) => normalizeCategoryLookupKey(category.name)),
+  );
+  const deletedCategoryNames = new Set(
+    deletedCategories
+      .map((entry) => normalizeCategoryLookupKey(entry.name))
+      .filter((name) => name.length > 0 && !liveCategoryNames.has(name)),
+  );
+  const liveTransactions = transactions
+    .filter(
       (transaction) =>
         !deletedTransactionIds.has(transaction.id) &&
         (transaction.fromAccountId == null ||
           !deletedAccountIds.has(transaction.fromAccountId)) &&
         (transaction.toAccountId == null ||
           !deletedAccountIds.has(transaction.toAccountId)),
-    ),
+    )
+    .map((transaction) =>
+      transaction.category != null &&
+      deletedCategoryNames.has(normalizeCategoryLookupKey(transaction.category))
+        ? { ...transaction, category: undefined }
+        : transaction,
+    );
+  const normalizedCategories = Array.isArray(raw.categories)
+    ? liveCategories
+    : deriveCategoriesFromTransactions(liveTransactions);
+
+  return {
+    accounts: accounts.filter((account) => !deletedAccountIds.has(account.id)),
+    categories: normalizedCategories,
+    transactions: liveTransactions,
     deletedAccounts,
+    deletedCategories,
     deletedTransactions,
   };
 }

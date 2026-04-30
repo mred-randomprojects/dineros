@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { format } from "date-fns";
-import type { Account, AccountId, Transaction } from "../types";
+import type { Account, AccountId, Category, Transaction } from "../types";
 import { formatAmount } from "../types";
 import {
   Dialog,
@@ -38,6 +38,7 @@ interface TransactionFormProps {
   onOpenChange: (open: boolean) => void;
   onSave: (tx: Omit<Transaction, "id" | "createdAt">) => void;
   accounts: ReadonlyArray<Account>;
+  categories: ReadonlyArray<Category>;
   transaction?: Transaction;
 }
 
@@ -46,6 +47,7 @@ export function TransactionForm({
   onOpenChange,
   onSave,
   accounts,
+  categories,
   transaction,
 }: TransactionFormProps) {
   const [date, setDate] = useState("");
@@ -121,15 +123,36 @@ export function TransactionForm({
     }
   }, [accounts, open, transaction]);
 
-  const fromOptions = useMemo((): ComboboxOption[] => [
-    { value: NONE_VALUE, label: "None (income / initial balance)" },
-    ...accounts.map((a) => ({ value: a.id, label: `${a.name} (${a.currency})` })),
-  ], [accounts]);
+  const fromOptions = useMemo(
+    (): ComboboxOption[] => [
+      { value: NONE_VALUE, label: "None (income / initial balance)" },
+      ...accounts.map((a) => ({
+        value: a.id,
+        label: `${a.name} (${a.currency})`,
+      })),
+    ],
+    [accounts],
+  );
 
-  const toOptions = useMemo((): ComboboxOption[] => [
-    { value: NONE_VALUE, label: "None (expense)" },
-    ...accounts.map((a) => ({ value: a.id, label: `${a.name} (${a.currency})` })),
-  ], [accounts]);
+  const toOptions = useMemo(
+    (): ComboboxOption[] => [
+      { value: NONE_VALUE, label: "None (expense)" },
+      ...accounts.map((a) => ({
+        value: a.id,
+        label: `${a.name} (${a.currency})`,
+      })),
+    ],
+    [accounts],
+  );
+
+  const categoryOptions = useMemo(
+    (): ComboboxOption[] =>
+      categories.map((category) => ({
+        value: category.name,
+        label: category.name,
+      })),
+    [categories],
+  );
 
   const isEditing = transaction != null;
   const selectedFromAccount = accounts.find((a) => a.id === fromAccountId);
@@ -436,12 +459,13 @@ export function TransactionForm({
 
           <div className="space-y-2">
             <Label htmlFor="tx-category">Category</Label>
-            <Input
+            <Combobox
               id="tx-category"
-              placeholder="e.g. Food, Rent"
+              options={categoryOptions}
               value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              onKeyDown={handleFieldKeyDown}
+              onValueChange={setCategory}
+              placeholder="Search or add category..."
+              allowCustomValue
             />
           </div>
 

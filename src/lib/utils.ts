@@ -20,9 +20,13 @@ export function focusNextInForm(
     form.querySelectorAll<HTMLElement>(
       "input:not(:disabled):not([type=hidden]), button:not(:disabled), select:not(:disabled), textarea:not(:disabled)",
     ),
-  ).filter((el) => el.tabIndex !== -1);
+  ).filter((el) => el.tabIndex !== -1 && el.getClientRects().length > 0);
+  if (focusables.length === 0) return;
   const idx = focusables.indexOf(current);
   if (idx === -1) return;
-  const next = reverse ? focusables[idx - 1] : focusables[idx + 1];
+  const nextIndex = reverse
+    ? (idx - 1 + focusables.length) % focusables.length
+    : (idx + 1) % focusables.length;
+  const next = focusables[nextIndex];
   next?.focus();
 }

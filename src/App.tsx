@@ -5,6 +5,7 @@ import { useAppData } from "./useAppData";
 import { AuthProvider, useAuth } from "./auth";
 import { NavBar } from "./components/NavBar";
 import { Accounts } from "./components/Accounts";
+import { Categories } from "./components/Categories";
 import { Transactions } from "./components/Transactions";
 import { LoginPage } from "./components/LoginPage";
 
@@ -52,6 +53,8 @@ function AuthenticatedApp() {
       if (e.key === "1") {
         navigate("/accounts");
       } else if (e.key === "2") {
+        navigate("/categories");
+      } else if (e.key === "3") {
         navigate("/transactions");
       }
     }
@@ -65,6 +68,7 @@ function AuthenticatedApp() {
       <Routes>
         <Route path="/" element={<Navigate to="/accounts" replace />} />
         <Route path="/accounts" element={<Accounts appData={appData} />} />
+        <Route path="/categories" element={<Categories appData={appData} />} />
         <Route
           path="/transactions"
           element={<Transactions appData={appData} />}

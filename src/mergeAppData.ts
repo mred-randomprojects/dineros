@@ -2,13 +2,19 @@ import type {
   AppData,
   Account,
   AccountId,
+  Category,
+  CategoryId,
   Transaction,
   TransactionId,
 } from "./types";
+import { normalizeCategoryLookupKey } from "./types";
 import {
   buildDeletedAccountSet,
+  buildDeletedCategoryNameSet,
+  buildDeletedCategorySet,
   buildDeletedTransactionSet,
   mergeDeletedAccounts,
+  mergeDeletedCategories,
   mergeDeletedTransactions,
 } from "./deletedEntries";
 
@@ -27,19 +33,40 @@ export function mergeAppData(local: AppData, cloud: AppData): AppData {
     local.deletedTransactions ?? [],
     cloud.deletedTransactions ?? [],
   );
+  const deletedCategories = mergeDeletedCategories(
+    local.deletedCategories ?? [],
+    cloud.deletedCategories ?? [],
+  );
   const deletedAccountSet = buildDeletedAccountSet(deletedAccounts);
+  const deletedCategorySet = buildDeletedCategorySet(deletedCategories);
   const deletedTransactionSet =
     buildDeletedTransactionSet(deletedTransactions);
+  const categories = mergeCategories(
+    local.categories,
+    cloud.categories,
+    deletedCategorySet,
+  );
+  const liveCategoryNames = new Set(
+    categories.map((category) => normalizeCategoryLookupKey(category.name)),
+  );
+  const deletedCategoryNameSet = new Set(
+    [...buildDeletedCategoryNameSet(deletedCategories)].filter(
+      (name) => !liveCategoryNames.has(name),
+    ),
+  );
 
   return {
     accounts: mergeAccounts(local.accounts, cloud.accounts, deletedAccountSet),
+    categories,
     transactions: mergeTransactions(
       local.transactions,
       cloud.transactions,
       deletedAccountSet,
+      deletedCategoryNameSet,
       deletedTransactionSet,
     ),
     deletedAccounts,
+    deletedCategories,
     deletedTransactions,
   };
 }
@@ -60,23 +87,51 @@ function mergeAccounts(
   ];
 }
 
+function mergeCategories(
+  localCategories: ReadonlyArray<Category>,
+  cloudCategories: ReadonlyArray<Category>,
+  deletedCategorySet: ReadonlySet<CategoryId>,
+): Category[] {
+  const liveCloudCategories = cloudCategories.filter(
+    (category) => !deletedCategorySet.has(category.id),
+  );
+  const cloudIds = new Set<CategoryId>(liveCloudCategories.map((c) => c.id));
+  const cloudNames = new Set(
+    liveCloudCategories.map((category) =>
+      normalizeCategoryLookupKey(category.name),
+    ),
+  );
+  const localOnly = localCategories.filter(
+    (category) =>
+      !cloudIds.has(category.id) &&
+      !cloudNames.has(normalizeCategoryLookupKey(category.name)) &&
+      !deletedCategorySet.has(category.id),
+  );
+  return [...liveCloudCategories, ...localOnly];
+}
+
 function mergeTransactions(
   localTransactions: ReadonlyArray<Transaction>,
   cloudTransactions: ReadonlyArray<Transaction>,
   deletedAccountSet: ReadonlySet<AccountId>,
+  deletedCategoryNameSet: ReadonlySet<string>,
   deletedTransactionSet: ReadonlySet<TransactionId>,
 ): Transaction[] {
-  const liveCloudTransactions = cloudTransactions.filter((tx) =>
-    isLiveTransaction(tx, deletedAccountSet, deletedTransactionSet),
-  );
+  const liveCloudTransactions = cloudTransactions
+    .filter((tx) =>
+      isLiveTransaction(tx, deletedAccountSet, deletedTransactionSet),
+    )
+    .map((tx) => clearDeletedCategory(tx, deletedCategoryNameSet));
   const cloudIds = new Set<TransactionId>(
     liveCloudTransactions.map((t) => t.id),
   );
-  const localOnly = localTransactions.filter(
-    (tx) =>
-      !cloudIds.has(tx.id) &&
-      isLiveTransaction(tx, deletedAccountSet, deletedTransactionSet),
-  );
+  const localOnly = localTransactions
+    .filter(
+      (tx) =>
+        !cloudIds.has(tx.id) &&
+        isLiveTransaction(tx, deletedAccountSet, deletedTransactionSet),
+    )
+    .map((tx) => clearDeletedCategory(tx, deletedCategoryNameSet));
   return [...liveCloudTransactions, ...localOnly];
 }
 
@@ -92,4 +147,18 @@ function isLiveTransaction(
     (transaction.toAccountId == null ||
       !deletedAccountSet.has(transaction.toAccountId))
   );
+}
+
+function clearDeletedCategory(
+  transaction: Transaction,
+  deletedCategoryNameSet: ReadonlySet<string>,
+): Transaction {
+  if (
+    transaction.category == null ||
+    !deletedCategoryNameSet.has(normalizeCategoryLookupKey(transaction.category))
+  ) {
+    return transaction;
+  }
+
+  return { ...transaction, category: undefined };
 }

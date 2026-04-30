@@ -3,10 +3,16 @@ import type {
   AppData,
   Account,
   AccountId,
+  Category,
+  CategoryId,
   Transaction,
   TransactionId,
 } from "./types";
-import { generateId } from "./types";
+import {
+  cleanCategoryName,
+  generateId,
+  normalizeCategoryLookupKey,
+} from "./types";
 import { loadAppData, saveAppData, StorageQuotaError } from "./storage";
 import { loadCloudData, saveCloudData } from "./cloudStorage";
 import { mergeAppData } from "./mergeAppData";
@@ -14,6 +20,7 @@ import { useAuth } from "./auth";
 import type { ParsedCsvTransaction } from "./importTransactionsCsv";
 import {
   upsertDeletedAccount,
+  upsertDeletedCategory,
   upsertDeletedTransaction,
 } from "./deletedEntries";
 import {
@@ -26,6 +33,38 @@ export interface ImportTransactionsResult {
   transactionsImported: number;
   accountsCreated: number;
   accountsMatched: number;
+}
+
+function categoryNamesMatch(
+  left: string | null | undefined,
+  right: string | null | undefined,
+): boolean {
+  return normalizeCategoryLookupKey(left) === normalizeCategoryLookupKey(right);
+}
+
+function appendMissingCategories(
+  categories: ReadonlyArray<Category>,
+  names: ReadonlyArray<string | null | undefined>,
+  createdAt: string,
+): Category[] {
+  const next = [...categories];
+  const existingNames = new Set(
+    next.map((category) => normalizeCategoryLookupKey(category.name)),
+  );
+
+  for (const rawName of names) {
+    const name = cleanCategoryName(rawName);
+    const key = normalizeCategoryLookupKey(name);
+    if (key.length === 0 || existingNames.has(key)) continue;
+    next.push({
+      id: generateId() as CategoryId,
+      name,
+      createdAt,
+    });
+    existingNames.add(key);
+  }
+
+  return next;
 }
 
 /**
@@ -230,17 +269,99 @@ export function useAppData() {
     [data, persist],
   );
 
+  // --- Category CRUD ---
+
+  const addCategory = useCallback(
+    (input: Omit<Category, "id" | "createdAt">) => {
+      const name = cleanCategoryName(input.name);
+      const existing = data.categories.find((category) =>
+        categoryNamesMatch(category.name, name),
+      );
+      if (existing != null) return existing;
+
+      const newCategory: Category = {
+        id: generateId() as CategoryId,
+        name,
+        createdAt: new Date().toISOString(),
+      };
+      persist({ ...data, categories: [...data.categories, newCategory] });
+      return newCategory;
+    },
+    [data, persist],
+  );
+
+  const updateCategory = useCallback(
+    (
+      categoryId: CategoryId,
+      updates: Partial<Omit<Category, "id" | "createdAt">>,
+    ) => {
+      const category = data.categories.find((c) => c.id === categoryId);
+      if (category == null) return;
+
+      const nextName = cleanCategoryName(updates.name ?? category.name);
+      if (nextName.length === 0) return;
+
+      persist({
+        ...data,
+        categories: data.categories.map((c) =>
+          c.id === categoryId ? { ...c, name: nextName } : c,
+        ),
+        transactions: data.transactions.map((tx) =>
+          categoryNamesMatch(tx.category, category.name)
+            ? { ...tx, category: nextName }
+            : tx,
+        ),
+      });
+    },
+    [data, persist],
+  );
+
+  const deleteCategory = useCallback(
+    (categoryId: CategoryId) => {
+      const category = data.categories.find((c) => c.id === categoryId);
+      if (category == null) return;
+
+      const deletedAt = new Date().toISOString();
+      persist({
+        ...data,
+        deletedCategories: upsertDeletedCategory(
+          data.deletedCategories ?? [],
+          {
+            categoryId,
+            name: category.name,
+            deletedAt,
+          },
+        ),
+        categories: data.categories.filter((c) => c.id !== categoryId),
+        transactions: data.transactions.map((tx) =>
+          categoryNamesMatch(tx.category, category.name)
+            ? { ...tx, category: undefined }
+            : tx,
+        ),
+      });
+    },
+    [data, persist],
+  );
+
   // --- Transaction CRUD ---
 
   const addTransaction = useCallback(
     (input: Omit<Transaction, "id" | "createdAt">) => {
+      const createdAt = new Date().toISOString();
       const newTransaction: Transaction = {
         ...input,
         id: generateId() as TransactionId,
-        createdAt: new Date().toISOString(),
+        category: cleanCategoryName(input.category) || undefined,
+        createdAt,
       };
+      const categories = appendMissingCategories(
+        data.categories,
+        [newTransaction.category],
+        createdAt,
+      );
       persist({
         ...data,
+        categories,
         transactions: [...data.transactions, newTransaction],
       });
       return newTransaction;
@@ -253,10 +374,26 @@ export function useAppData() {
       transactionId: TransactionId,
       updates: Partial<Omit<Transaction, "id" | "createdAt">>,
     ) => {
+      const hasCategoryUpdate = "category" in updates;
+      const cleanUpdates = hasCategoryUpdate
+        ? {
+            ...updates,
+            category:
+              updates.category == null
+                ? updates.category
+                : cleanCategoryName(updates.category) || undefined,
+          }
+        : updates;
+      const categories = appendMissingCategories(
+        data.categories,
+        hasCategoryUpdate ? [cleanUpdates.category] : [],
+        new Date().toISOString(),
+      );
       persist({
         ...data,
+        categories,
         transactions: data.transactions.map((tx) =>
-          tx.id === transactionId ? { ...tx, ...updates } : tx,
+          tx.id === transactionId ? { ...tx, ...cleanUpdates } : tx,
         ),
       });
     },
@@ -367,9 +504,16 @@ export function useAppData() {
         };
       });
 
+      const nextCategories = appendMissingCategories(
+        data.categories,
+        importedTransactions.map((tx) => tx.category),
+        createdAt,
+      );
+
       persist({
         ...data,
         accounts: nextAccounts,
+        categories: nextCategories,
         transactions: [...data.transactions, ...importedTransactions],
       });
 
@@ -392,6 +536,9 @@ export function useAppData() {
     addAccount,
     updateAccount,
     deleteAccount,
+    addCategory,
+    updateCategory,
+    deleteCategory,
     addTransaction,
     updateTransaction,
     deleteTransaction,

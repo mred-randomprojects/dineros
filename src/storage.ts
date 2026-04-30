@@ -31,8 +31,10 @@ function safeSetItem(key: string, value: string): void {
 
 const DEFAULT_APP_DATA: AppData = {
   accounts: [],
+  categories: [],
   transactions: [],
   deletedAccounts: [],
+  deletedCategories: [],
   deletedTransactions: [],
 };
 

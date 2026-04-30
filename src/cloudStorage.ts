@@ -5,6 +5,7 @@ import { normalizeAppData } from "./types";
 import {
   filterDeletedEntriesFromAppData,
   mergeDeletedAccounts,
+  mergeDeletedCategories,
   mergeDeletedTransactions,
 } from "./deletedEntries";
 
@@ -31,8 +32,10 @@ function userDocRef(uid: string) {
 function payloadFromAppData(data: AppData): Record<string, unknown> {
   return stripUndefined({
     accounts: data.accounts,
+    categories: data.categories,
     transactions: data.transactions,
     deletedAccounts: data.deletedAccounts,
+    deletedCategories: data.deletedCategories,
     deletedTransactions: data.deletedTransactions,
   }) as Record<string, unknown>;
 }
@@ -63,13 +66,19 @@ export async function saveCloudData(
       data.deletedTransactions ?? [],
       cloudData?.deletedTransactions ?? [],
     );
+    const deletedCategories = mergeDeletedCategories(
+      data.deletedCategories ?? [],
+      cloudData?.deletedCategories ?? [],
+    );
     const filteredData = filterDeletedEntriesFromAppData(
       {
         ...data,
         deletedAccounts,
+        deletedCategories,
         deletedTransactions,
       },
       deletedAccounts,
+      deletedCategories,
       deletedTransactions,
     );
 

@@ -1,9 +1,10 @@
 import { useLocation, useNavigate } from "react-router-dom";
-import { Wallet, ArrowLeftRight } from "lucide-react";
+import { Wallet, ArrowLeftRight, Tags } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
   { path: "/accounts", label: "Accounts", icon: Wallet },
+  { path: "/categories", label: "Categories", icon: Tags },
   { path: "/transactions", label: "Transactions", icon: ArrowLeftRight },
 ] as const;
 

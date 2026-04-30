@@ -355,6 +355,7 @@ export function Transactions({ appData }: TransactionsProps) {
         onOpenChange={setShowAddForm}
         onSave={handleAddSave}
         accounts={appData.data.accounts}
+        categories={appData.data.categories}
       />
 
       <TransactionImportDialog
@@ -370,6 +371,7 @@ export function Transactions({ appData }: TransactionsProps) {
         }}
         onSave={handleEditSave}
         accounts={appData.data.accounts}
+        categories={appData.data.categories}
         transaction={editingTransaction}
       />
 
