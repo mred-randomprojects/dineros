@@ -29,6 +29,7 @@ export interface Transaction {
   fromCurrency: string | null;
   toCurrency: string | null;
   category?: string;
+  isExpected?: boolean;
   description: string;
   createdAt: string;
 }
@@ -112,6 +113,10 @@ function nullableStringValue(value: unknown): string | null {
 
 function nullableNumberValue(value: unknown): number | null {
   return value == null ? null : numberValue(value);
+}
+
+function booleanValue(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
 }
 
 function normalizeAccount(raw: unknown): Account | null {
@@ -199,6 +204,7 @@ function normalizeTransaction(
           accountCurrencies.get(toAccountId) ??
           null),
     category: category.length > 0 ? category : undefined,
+    isExpected: booleanValue(raw.isExpected) === true ? true : undefined,
     description,
     createdAt,
   };

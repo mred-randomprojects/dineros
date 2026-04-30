@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { format } from "date-fns";
+import { CalendarClock, CheckCircle2 } from "lucide-react";
 import type { Account, AccountId, Category, Transaction } from "../types";
 import { formatAmount } from "../types";
 import {
@@ -27,6 +28,7 @@ interface TransactionFormDraft {
   fromAccountId: string;
   toAccountId: string;
   category: string;
+  isExpected: boolean;
   fromAmount: string;
   toAmount: string;
   exchangeRate: string;
@@ -54,6 +56,7 @@ export function TransactionForm({
   const [fromAccountId, setFromAccountId] = useState<string>(NONE_VALUE);
   const [toAccountId, setToAccountId] = useState<string>(NONE_VALUE);
   const [category, setCategory] = useState("");
+  const [isExpected, setIsExpected] = useState(false);
   const [fromAmount, setFromAmount] = useState("");
   const [toAmount, setToAmount] = useState("");
   const [exchangeRate, setExchangeRate] = useState("");
@@ -71,6 +74,7 @@ export function TransactionForm({
       const initialFromAccountId = transaction?.fromAccountId ?? NONE_VALUE;
       const initialToAccountId = transaction?.toAccountId ?? NONE_VALUE;
       const initialCategory = transaction?.category ?? "";
+      const initialIsExpected = transaction?.isExpected === true;
       const initialFromAmount =
         transaction?.fromAmount != null ? String(transaction.fromAmount) : "";
       const initialToAmount =
@@ -99,6 +103,7 @@ export function TransactionForm({
       setFromAccountId(initialFromAccountId);
       setToAccountId(initialToAccountId);
       setCategory(initialCategory);
+      setIsExpected(initialIsExpected);
       setFromAmount(initialFromAmount);
       setToAmount(initialToAmount);
       setExchangeRate(initialExchangeRate);
@@ -114,6 +119,7 @@ export function TransactionForm({
         fromAccountId: initialFromAccountId,
         toAccountId: initialToAccountId,
         category: initialCategory,
+        isExpected: initialIsExpected,
         fromAmount: initialFromAmount,
         toAmount: initialToAmount,
         exchangeRate: initialExchangeRate,
@@ -199,6 +205,7 @@ export function TransactionForm({
       fromAccountId !== initialDraft.fromAccountId ||
       toAccountId !== initialDraft.toAccountId ||
       category !== initialDraft.category ||
+      isExpected !== initialDraft.isExpected ||
       fromAmount !== initialDraft.fromAmount ||
       toAmount !== initialDraft.toAmount ||
       exchangeRate !== initialDraft.exchangeRate ||
@@ -328,6 +335,7 @@ export function TransactionForm({
       fromCurrency: selectedFromAccount?.currency ?? null,
       toCurrency: selectedToAccount?.currency ?? null,
       category: category.trim().length > 0 ? category.trim() : undefined,
+      isExpected: isExpected ? true : undefined,
       description: description.trim(),
     });
     closeWithoutPrompt();
@@ -364,6 +372,28 @@ export function TransactionForm({
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
+            <button
+              type="button"
+              className={`flex w-full items-center justify-between rounded-lg border px-3 py-2 text-sm transition-colors ${
+                isExpected
+                  ? "border-amber-500/50 bg-amber-500/10 text-amber-300"
+                  : "border-input hover:bg-accent"
+              }`}
+              onClick={() => setIsExpected((previous) => !previous)}
+            >
+              <span className="flex items-center gap-2">
+                {isExpected ? (
+                  <CalendarClock className="h-4 w-4" />
+                ) : (
+                  <CheckCircle2 className="h-4 w-4" />
+                )}
+                {isExpected ? "Expected" : "Actual"}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {isExpected ? "not done yet" : "done"}
+              </span>
+            </button>
+
           <div className="space-y-2">
             <Label>From</Label>
             <Combobox

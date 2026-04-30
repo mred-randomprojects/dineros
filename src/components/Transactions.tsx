@@ -8,6 +8,8 @@ import {
   TrendingUp,
   TrendingDown,
   Upload,
+  CalendarClock,
+  CheckCircle2,
 } from "lucide-react";
 import type { AppDataHandle } from "../appDataType";
 import type { AccountId, Transaction, TransactionId } from "../types";
@@ -201,6 +203,15 @@ export function Transactions({ appData }: TransactionsProps) {
     setDeletingTransaction(undefined);
   }, [appData, deletingTransaction]);
 
+  const toggleExpected = useCallback(
+    (tx: Transaction) => {
+      appData.updateTransaction(tx.id, {
+        isExpected: tx.isExpected === true ? undefined : true,
+      });
+    },
+    [appData],
+  );
+
   function accountLabel(accountId: AccountId | null): string {
     if (accountId == null) return "—";
     const account = appData.accountsMap.get(accountId);
@@ -259,6 +270,7 @@ export function Transactions({ appData }: TransactionsProps) {
           {group.transactions.map((tx) => {
             const isIncome = tx.fromAccountId == null;
             const isExpense = tx.toAccountId == null;
+            const isExpected = tx.isExpected === true;
             const flatIdx = txFlatIndexMap.get(tx.id);
             const isSelected = flatIdx === selectedIndex;
             const amountLabel = transactionAmountLabel(tx);
@@ -270,6 +282,7 @@ export function Transactions({ appData }: TransactionsProps) {
                 id={`tx-${tx.id}`}
                 className={cn(
                   "p-3 transition-shadow",
+                  isExpected && "border-amber-500/40 bg-amber-500/5",
                   isSelected && "ring-2 ring-primary",
                 )}
                 onClick={() => setSelectedIndex(flatIdx ?? null)}
@@ -304,6 +317,11 @@ export function Transactions({ appData }: TransactionsProps) {
                         {tx.category}
                       </p>
                     )}
+                    {isExpected && (
+                      <p className="mt-0.5 inline-flex w-fit rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-300">
+                        Expected
+                      </p>
+                    )}
                     {detailLabel != null && (
                       <p className="mt-0.5 truncate text-xs text-muted-foreground">
                         {detailLabel}
@@ -316,10 +334,32 @@ export function Transactions({ appData }: TransactionsProps) {
                         "max-w-[9rem] whitespace-normal text-right text-sm font-semibold leading-tight",
                         isIncome && "text-emerald-400",
                         isExpense && "text-destructive",
+                        isExpected && "text-amber-300",
                       )}
                     >
                       {amountLabel}
                     </span>
+                    <Button
+                      variant={isExpected ? "outline" : "ghost"}
+                      size="icon"
+                      className="h-7 w-7"
+                      aria-label={
+                        isExpected ? "Mark as actual" : "Mark as expected"
+                      }
+                      title={
+                        isExpected ? "Mark as actual" : "Mark as expected"
+                      }
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleExpected(tx);
+                      }}
+                    >
+                      {isExpected ? (
+                        <CheckCircle2 className="h-3 w-3" />
+                      ) : (
+                        <CalendarClock className="h-3 w-3" />
+                      )}
+                    </Button>
                     <Button
                       variant="ghost"
                       size="icon"

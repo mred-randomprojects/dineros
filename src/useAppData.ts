@@ -186,6 +186,7 @@ export function useAppData() {
       balances.set(account.id, 0);
     }
     for (const tx of data.transactions) {
+      if (tx.isExpected === true) continue;
       if (tx.fromAccountId != null) {
         const current = balances.get(tx.fromAccountId) ?? 0;
         balances.set(tx.fromAccountId, current - (tx.fromAmount ?? 0));
