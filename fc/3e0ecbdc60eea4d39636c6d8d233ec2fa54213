@@ -1,0 +1,40 @@
+index.html
+  e21f5757697bceca 9
+src/components/ui/dialog.tsx
+  e21f5757697bceca 35
+src/components/Transactions.tsx
+  dc547f364cc30967 461-464
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "fc3e0ecbdc60eea4d39636c6d8d233ec2fa54213",
+  "prompts": {
+    "dc547f364cc30967": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019dde83-e73d-7163-b74e-ed814212d504",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Maximiliano Redigonda",
+      "messages": [],
+      "total_additions": 4,
+      "total_deletions": 0,
+      "accepted_lines": 4,
+      "overriden_lines": 0
+    },
+    "e21f5757697bceca": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019de365-620a-7d32-b75e-e95ec7da4607",
+        "model": "unknown"
+      },
+      "human_author": "Maximiliano Redigonda",
+      "messages": [],
+      "total_additions": 2,
+      "total_deletions": 2,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    }
+  }
+}
