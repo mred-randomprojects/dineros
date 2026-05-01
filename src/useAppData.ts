@@ -10,6 +10,7 @@ import type {
 } from "./types";
 import {
   cleanCategoryName,
+  formatAmount,
   generateId,
   normalizeCategoryLookupKey,
 } from "./types";
@@ -33,6 +34,13 @@ export interface ImportTransactionsResult {
   transactionsImported: number;
   accountsCreated: number;
   accountsMatched: number;
+}
+
+export interface AddBalanceAdjustmentInput {
+  accountId: AccountId;
+  targetBalance: number;
+  date: string;
+  description?: string;
 }
 
 function categoryNamesMatch(
@@ -370,6 +378,57 @@ export function useAppData() {
     [data, persist],
   );
 
+  const addBalanceAdjustment = useCallback(
+    (input: AddBalanceAdjustmentInput) => {
+      const account = data.accounts.find((a) => a.id === input.accountId);
+      if (account == null) return null;
+
+      const previousBalance = roundMoney(accountBalances.get(account.id) ?? 0);
+      const targetBalance = roundMoney(input.targetBalance);
+      const delta = roundMoney(targetBalance - previousBalance);
+      if (delta === 0) return null;
+
+      const adjustmentAmount = Math.abs(delta);
+      const createdAt = new Date().toISOString();
+      const description = input.description?.trim();
+      const newTransaction: Transaction = {
+        id: generateId() as TransactionId,
+        kind: "balance_adjustment",
+        date: input.date,
+        fromAccountId: delta < 0 ? account.id : null,
+        toAccountId: delta > 0 ? account.id : null,
+        fromAmount: delta < 0 ? adjustmentAmount : null,
+        toAmount: delta > 0 ? adjustmentAmount : null,
+        fromCurrency: delta < 0 ? account.currency : null,
+        toCurrency: delta > 0 ? account.currency : null,
+        category: "Balance adjustment",
+        balanceAdjustment: {
+          accountId: account.id,
+          previousBalance,
+          targetBalance,
+        },
+        description:
+          description != null && description.length > 0
+            ? description
+            : `Adjusted balance to ${formatAmount(targetBalance)} ${account.currency}`,
+        createdAt,
+      };
+
+      const categories = appendMissingCategories(
+        data.categories,
+        [newTransaction.category],
+        createdAt,
+      );
+      persist({
+        ...data,
+        categories,
+        transactions: [...data.transactions, newTransaction],
+      });
+      return newTransaction;
+    },
+    [accountBalances, data, persist],
+  );
+
   const updateTransaction = useCallback(
     (
       transactionId: TransactionId,
@@ -544,6 +603,11 @@ export function useAppData() {
     updateTransaction,
     deleteTransaction,
     importTransactions,
+    addBalanceAdjustment,
     setStorageError,
   };
+}
+
+function roundMoney(value: number): number {
+  return Number(value.toFixed(2));
 }

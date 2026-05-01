@@ -1,6 +1,7 @@
 export type AccountId = string & { readonly __brand: "AccountId" };
 export type TransactionId = string & { readonly __brand: "TransactionId" };
 export type CategoryId = string & { readonly __brand: "CategoryId" };
+export type TransactionKind = "balance_adjustment";
 
 export function generateId(): string {
   return crypto.randomUUID();
@@ -19,8 +20,15 @@ export interface Category {
   createdAt: string;
 }
 
+export interface BalanceAdjustmentDetails {
+  accountId: AccountId;
+  previousBalance: number;
+  targetBalance: number;
+}
+
 export interface Transaction {
   id: TransactionId;
+  kind?: TransactionKind;
   date: string;
   fromAccountId: AccountId | null;
   toAccountId: AccountId | null;
@@ -30,6 +38,7 @@ export interface Transaction {
   toCurrency: string | null;
   category?: string;
   isExpected?: boolean;
+  balanceAdjustment?: BalanceAdjustmentDetails;
   description: string;
   createdAt: string;
 }
@@ -119,6 +128,29 @@ function booleanValue(value: unknown): boolean | null {
   return typeof value === "boolean" ? value : null;
 }
 
+function transactionKindValue(value: unknown): TransactionKind | undefined {
+  return value === "balance_adjustment" ? "balance_adjustment" : undefined;
+}
+
+function normalizeBalanceAdjustmentDetails(
+  raw: unknown,
+): BalanceAdjustmentDetails | undefined {
+  if (!isRecord(raw)) return undefined;
+
+  const accountId = stringValue(raw.accountId);
+  const previousBalance = numberValue(raw.previousBalance);
+  const targetBalance = numberValue(raw.targetBalance);
+  if (accountId == null || previousBalance == null || targetBalance == null) {
+    return undefined;
+  }
+
+  return {
+    accountId: accountId as AccountId,
+    previousBalance,
+    targetBalance,
+  };
+}
+
 function normalizeAccount(raw: unknown): Account | null {
   if (!isRecord(raw)) return null;
 
@@ -183,9 +215,15 @@ function normalizeTransaction(
       : (nullableNumberValue(raw.toAmount) ?? legacyAmount);
 
   const category = cleanCategoryName(stringValue(raw.category));
+  const kind = transactionKindValue(raw.kind);
+  const balanceAdjustment =
+    kind === "balance_adjustment"
+      ? normalizeBalanceAdjustmentDetails(raw.balanceAdjustment)
+      : undefined;
 
   return {
     id: id as TransactionId,
+    kind,
     date,
     fromAccountId,
     toAccountId,
@@ -205,6 +243,7 @@ function normalizeTransaction(
           null),
     category: category.length > 0 ? category : undefined,
     isExpected: booleanValue(raw.isExpected) === true ? true : undefined,
+    balanceAdjustment,
     description,
     createdAt,
   };

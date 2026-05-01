@@ -10,6 +10,7 @@ import {
   Upload,
   CalendarClock,
   CheckCircle2,
+  Scale,
 } from "lucide-react";
 import type { AppDataHandle } from "../appDataType";
 import type { AccountId, Transaction, TransactionId } from "../types";
@@ -167,7 +168,7 @@ export function Transactions({ appData }: TransactionsProps) {
         const idx = selectedIndexRef.current;
         if (idx != null) {
           const tx = flatTransactionsRef.current[idx];
-          if (tx != null) {
+          if (tx != null && tx.kind !== "balance_adjustment") {
             e.preventDefault();
             setEditingTransaction(tx);
           }
@@ -268,13 +269,19 @@ export function Transactions({ appData }: TransactionsProps) {
             {group.label}
           </p>
           {group.transactions.map((tx) => {
-            const isIncome = tx.fromAccountId == null;
-            const isExpense = tx.toAccountId == null;
+            const isBalanceAdjustment = tx.kind === "balance_adjustment";
+            const isIncome = tx.fromAccountId == null && !isBalanceAdjustment;
+            const isExpense = tx.toAccountId == null && !isBalanceAdjustment;
             const isExpected = tx.isExpected === true;
             const flatIdx = txFlatIndexMap.get(tx.id);
             const isSelected = flatIdx === selectedIndex;
             const amountLabel = transactionAmountLabel(tx);
             const detailLabel = transactionDetailLabel(tx);
+            const adjustmentDelta = transactionBalanceAdjustmentDelta(tx);
+            const adjustmentAccountId =
+              tx.balanceAdjustment?.accountId ??
+              tx.toAccountId ??
+              tx.fromAccountId;
 
             return (
               <Card
@@ -290,22 +297,36 @@ export function Transactions({ appData }: TransactionsProps) {
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5 text-sm">
+                      {isBalanceAdjustment && (
+                        <>
+                          <Scale className="h-3.5 w-3.5 shrink-0 text-primary" />
+                          <span className="truncate">Balance adjustment</span>
+                          <ArrowRight className="h-3 w-3 shrink-0 text-muted-foreground" />
+                          <span className="truncate">
+                            {accountLabel(adjustmentAccountId)}
+                          </span>
+                        </>
+                      )}
                       {isIncome && (
                         <TrendingUp className="h-3.5 w-3.5 shrink-0 text-emerald-400" />
                       )}
                       {isExpense && (
                         <TrendingDown className="h-3.5 w-3.5 shrink-0 text-destructive" />
                       )}
-                      {!isIncome && !isExpense && (
+                      {!isBalanceAdjustment && !isIncome && !isExpense && (
                         <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                       )}
-                      <span className="truncate">
-                        {accountLabel(tx.fromAccountId)}
-                      </span>
-                      <ArrowRight className="h-3 w-3 shrink-0 text-muted-foreground" />
-                      <span className="truncate">
-                        {accountLabel(tx.toAccountId)}
-                      </span>
+                      {!isBalanceAdjustment && (
+                        <>
+                          <span className="truncate">
+                            {accountLabel(tx.fromAccountId)}
+                          </span>
+                          <ArrowRight className="h-3 w-3 shrink-0 text-muted-foreground" />
+                          <span className="truncate">
+                            {accountLabel(tx.toAccountId)}
+                          </span>
+                        </>
+                      )}
                     </div>
                     {tx.description.length > 0 && (
                       <p className="mt-0.5 truncate text-xs text-muted-foreground">
@@ -334,43 +355,52 @@ export function Transactions({ appData }: TransactionsProps) {
                         "max-w-[9rem] whitespace-normal text-right text-sm font-semibold leading-tight",
                         isIncome && "text-emerald-400",
                         isExpense && "text-destructive",
+                        isBalanceAdjustment &&
+                          adjustmentDelta != null &&
+                          (adjustmentDelta >= 0
+                            ? "text-emerald-400"
+                            : "text-destructive"),
                         isExpected && "text-amber-300",
                       )}
                     >
                       {amountLabel}
                     </span>
-                    <Button
-                      variant={isExpected ? "outline" : "ghost"}
-                      size="icon"
-                      className="h-7 w-7"
-                      aria-label={
-                        isExpected ? "Mark as actual" : "Mark as expected"
-                      }
-                      title={
-                        isExpected ? "Mark as actual" : "Mark as expected"
-                      }
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleExpected(tx);
-                      }}
-                    >
-                      {isExpected ? (
-                        <CheckCircle2 className="h-3 w-3" />
-                      ) : (
-                        <CalendarClock className="h-3 w-3" />
-                      )}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setEditingTransaction(tx);
-                      }}
-                    >
-                      <Pencil className="h-3 w-3" />
-                    </Button>
+                    {!isBalanceAdjustment && (
+                      <>
+                        <Button
+                          variant={isExpected ? "outline" : "ghost"}
+                          size="icon"
+                          className="h-7 w-7"
+                          aria-label={
+                            isExpected ? "Mark as actual" : "Mark as expected"
+                          }
+                          title={
+                            isExpected ? "Mark as actual" : "Mark as expected"
+                          }
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleExpected(tx);
+                          }}
+                        >
+                          {isExpected ? (
+                            <CheckCircle2 className="h-3 w-3" />
+                          ) : (
+                            <CalendarClock className="h-3 w-3" />
+                          )}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingTransaction(tx);
+                          }}
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </Button>
+                      </>
+                    )}
                     <Button
                       variant="ghost"
                       size="icon"
@@ -433,6 +463,14 @@ export function Transactions({ appData }: TransactionsProps) {
 }
 
 function transactionAmountLabel(tx: Transaction): string {
+  const adjustmentDelta = transactionBalanceAdjustmentDelta(tx);
+  if (tx.kind === "balance_adjustment" && adjustmentDelta != null) {
+    const currency = tx.toCurrency ?? tx.fromCurrency ?? "";
+    return `${adjustmentDelta > 0 ? "+" : ""}${formatAmount(
+      adjustmentDelta,
+    )} ${currency}`.trim();
+  }
+
   const fromLabel =
     tx.fromAmount == null
       ? null
@@ -451,6 +489,18 @@ function transactionAmountLabel(tx: Transaction): string {
 }
 
 function transactionDetailLabel(tx: Transaction): string | null {
+  if (tx.kind === "balance_adjustment") {
+    const adjustment = tx.balanceAdjustment;
+    const currency = tx.toCurrency ?? tx.fromCurrency ?? "";
+    if (adjustment != null) {
+      return `Adjusted from ${formatAmount(
+        adjustment.previousBalance,
+      )} to ${formatAmount(adjustment.targetBalance)} ${currency}`.trim();
+    }
+
+    return "Balance reconciliation adjustment";
+  }
+
   const exchangeRate = calculateExchangeRate(tx);
   if (
     exchangeRate != null &&
@@ -475,6 +525,20 @@ function transactionDetailLabel(tx: Transaction): string | null {
     return `Difference: ${formatAmount(tx.fromAmount - tx.toAmount)} ${tx.fromCurrency}`;
   }
 
+  return null;
+}
+
+function transactionBalanceAdjustmentDelta(tx: Transaction): number | null {
+  if (tx.kind !== "balance_adjustment") return null;
+
+  if (tx.balanceAdjustment != null) {
+    return (
+      tx.balanceAdjustment.targetBalance - tx.balanceAdjustment.previousBalance
+    );
+  }
+
+  if (tx.toAccountId != null && tx.toAmount != null) return tx.toAmount;
+  if (tx.fromAccountId != null && tx.fromAmount != null) return -tx.fromAmount;
   return null;
 }
 

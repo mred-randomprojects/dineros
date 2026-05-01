@@ -1,11 +1,15 @@
 import { useState, useMemo, useCallback } from "react";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, Scale, Trash2 } from "lucide-react";
 import type { AppDataHandle } from "../appDataType";
 import type { Account, AccountId } from "../types";
 import { formatAmount } from "../types";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
 import { AccountForm } from "./AccountForm";
+import {
+  BalanceAdjustmentForm,
+  type BalanceAdjustmentSaveInput,
+} from "./BalanceAdjustmentForm";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { cn } from "@/lib/utils";
 
@@ -24,6 +28,9 @@ export function Accounts({ appData }: AccountsProps) {
   const [editingAccount, setEditingAccount] = useState<Account | undefined>(
     undefined,
   );
+  const [adjustingAccount, setAdjustingAccount] = useState<
+    Account | undefined
+  >(undefined);
   const [deletingAccount, setDeletingAccount] = useState<Account | undefined>(
     undefined,
   );
@@ -70,6 +77,18 @@ export function Accounts({ appData }: AccountsProps) {
     setDeletingAccount(undefined);
   }, [appData, deletingAccount]);
 
+  const handleAdjustmentSave = useCallback(
+    (input: BalanceAdjustmentSaveInput) => {
+      if (adjustingAccount == null) return;
+      appData.addBalanceAdjustment({
+        accountId: adjustingAccount.id,
+        ...input,
+      });
+      setAdjustingAccount(undefined);
+    },
+    [adjustingAccount, appData],
+  );
+
   const txCountForAccount = useCallback(
     (accountId: AccountId) =>
       appData.data.transactions.filter(
@@ -78,6 +97,11 @@ export function Accounts({ appData }: AccountsProps) {
       ).length,
     [appData.data.transactions],
   );
+
+  const adjustingAccountBalance =
+    adjustingAccount == null
+      ? 0
+      : (appData.accountBalances.get(adjustingAccount.id) ?? 0);
 
   return (
     <div className="space-y-6 p-4">
@@ -134,6 +158,16 @@ export function Accounts({ appData }: AccountsProps) {
                     variant="ghost"
                     size="icon"
                     className="h-8 w-8"
+                    aria-label={`Adjust balance for ${account.name}`}
+                    title="Adjust balance"
+                    onClick={() => setAdjustingAccount(account)}
+                  >
+                    <Scale className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
                     onClick={() => setEditingAccount(account)}
                   >
                     <Pencil className="h-3.5 w-3.5" />
@@ -166,6 +200,16 @@ export function Accounts({ appData }: AccountsProps) {
         }}
         onSave={handleEditSave}
         account={editingAccount}
+      />
+
+      <BalanceAdjustmentForm
+        open={adjustingAccount != null}
+        onOpenChange={(open) => {
+          if (!open) setAdjustingAccount(undefined);
+        }}
+        onSave={handleAdjustmentSave}
+        account={adjustingAccount}
+        currentBalance={adjustingAccountBalance}
       />
 
       <ConfirmDialog
