@@ -458,6 +458,10 @@ function transactionDetailLabel(tx: Transaction): string | null {
     tx.toCurrency != null &&
     tx.fromCurrency !== tx.toCurrency
   ) {
+    if (exchangeRate < 1) {
+      return `1 ${tx.fromCurrency} = ${formatRate(1 / exchangeRate)} ${tx.toCurrency}`;
+    }
+
     return `1 ${tx.toCurrency} = ${formatRate(exchangeRate)} ${tx.fromCurrency}`;
   }
 
