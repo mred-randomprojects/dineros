@@ -3,9 +3,14 @@ import { Wallet, ArrowLeftRight, Tags } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
-  { path: "/accounts", label: "Accounts", icon: Wallet },
-  { path: "/categories", label: "Categories", icon: Tags },
-  { path: "/transactions", label: "Transactions", icon: ArrowLeftRight },
+  { path: "/accounts", label: "Accounts", shortcut: "1", icon: Wallet },
+  { path: "/categories", label: "Categories", shortcut: "2", icon: Tags },
+  {
+    path: "/transactions",
+    label: "Transactions",
+    shortcut: "3",
+    icon: ArrowLeftRight,
+  },
 ] as const;
 
 export function NavBar() {
@@ -23,6 +28,7 @@ export function NavBar() {
             <button
               key={item.path}
               onClick={() => navigate(item.path)}
+              aria-label={`${item.label} (${item.shortcut})`}
               className={cn(
                 "flex flex-1 flex-col items-center gap-1 py-2 text-xs transition-colors",
                 isActive
@@ -31,7 +37,12 @@ export function NavBar() {
               )}
             >
               <item.icon className="h-5 w-5" />
-              {item.label}
+              <span className="flex items-baseline gap-1">
+                <span>{item.label}</span>
+                <span className="text-[10px] leading-none opacity-70">
+                  {item.shortcut}
+                </span>
+              </span>
             </button>
           );
         })}

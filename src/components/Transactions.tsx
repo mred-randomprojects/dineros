@@ -44,7 +44,15 @@ interface DateGroup {
 function isInteractiveTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   const tag = target.tagName;
-  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+  if (
+    tag === "INPUT" ||
+    tag === "TEXTAREA" ||
+    tag === "SELECT" ||
+    tag === "BUTTON" ||
+    tag === "A"
+  ) {
+    return true;
+  }
   if (target.isContentEditable) return true;
   if (target.closest('[role="dialog"]') != null) return true;
   return false;
@@ -138,7 +146,7 @@ export function Transactions({ appData }: TransactionsProps) {
       ?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [selectedIndex, flatTransactions]);
 
-  // Keyboard navigation: Arrow keys to select, E to edit
+  // Keyboard shortcuts: Space to add, Arrow keys to select, E to edit
   const flatTransactionsRef = useRef(flatTransactions);
   flatTransactionsRef.current = flatTransactions;
   const selectedIndexRef = useRef(selectedIndex);
@@ -149,16 +157,21 @@ export function Transactions({ appData }: TransactionsProps) {
       if (isInteractiveTarget(e.target)) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
 
-      const len = flatTransactionsRef.current.length;
-      if (len === 0) return;
+      if (e.key === " " || e.key === "Spacebar") {
+        e.preventDefault();
+        setShowAddForm(true);
+        return;
+      }
 
-      if (e.key === "ArrowDown") {
+      const len = flatTransactionsRef.current.length;
+
+      if (e.key === "ArrowDown" && len > 0) {
         e.preventDefault();
         setSelectedIndex((prev) => {
           if (prev == null) return 0;
           return Math.min(prev + 1, len - 1);
         });
-      } else if (e.key === "ArrowUp") {
+      } else if (e.key === "ArrowUp" && len > 0) {
         e.preventDefault();
         setSelectedIndex((prev) => {
           if (prev == null || prev === 0) return null;
