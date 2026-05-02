@@ -1,0 +1,25 @@
+src/components/NavBar.tsx
+  bdd56443efb6d4e9 6-13,31,40-45
+src/components/Transactions.tsx
+  bdd56443efb6d4e9 47-55,149,160-165,168,174
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "0b5ca9b406fcd9dab0c5fc318a3ec76fbabb4f3d",
+  "prompts": {
+    "bdd56443efb6d4e9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019dea09-9bf1-74d1-b7e6-63803e9526ae",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Maximiliano Redigonda",
+      "messages": [],
+      "total_additions": 33,
+      "total_deletions": 9,
+      "accepted_lines": 33,
+      "overriden_lines": 0
+    }
+  }
+}
