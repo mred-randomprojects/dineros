@@ -8,6 +8,7 @@ import {
   mergeDeletedCategories,
   mergeDeletedTransactions,
 } from "./deletedEntries";
+import { mergeAppData } from "./mergeAppData";
 
 /**
  * Recursively strips keys whose value is `undefined` so that
@@ -70,13 +71,30 @@ export async function saveCloudData(
       data.deletedCategories ?? [],
       cloudData?.deletedCategories ?? [],
     );
+    const mergedData =
+      cloudData == null
+        ? {
+            ...data,
+            deletedAccounts,
+            deletedCategories,
+            deletedTransactions,
+          }
+        : mergeAppData(
+            {
+              ...data,
+              deletedAccounts,
+              deletedCategories,
+              deletedTransactions,
+            },
+            {
+              ...cloudData,
+              deletedAccounts,
+              deletedCategories,
+              deletedTransactions,
+            },
+          );
     const filteredData = filterDeletedEntriesFromAppData(
-      {
-        ...data,
-        deletedAccounts,
-        deletedCategories,
-        deletedTransactions,
-      },
+      mergedData,
       deletedAccounts,
       deletedCategories,
       deletedTransactions,
