@@ -1,4 +1,10 @@
-import { useState, useMemo, useCallback } from "react";
+import {
+  useState,
+  useMemo,
+  useCallback,
+  useRef,
+  type KeyboardEvent,
+} from "react";
 import { useNavigate } from "react-router-dom";
 import { differenceInCalendarDays, format, isValid, parseISO } from "date-fns";
 import {
@@ -7,14 +13,17 @@ import {
   Clock3,
   Plus,
   Pencil,
+  Search,
   Scale,
   Trash2,
+  X,
 } from "lucide-react";
 import type { AppDataHandle } from "../appDataType";
 import type { Account, AccountId, Transaction } from "../types";
 import { formatAmount } from "../types";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
+import { Input } from "./ui/input";
 import { AccountForm } from "./AccountForm";
 import {
   BalanceAdjustmentForm,
@@ -48,6 +57,7 @@ const AGING_UPDATE_DAYS = 30;
 export function Accounts({ appData }: AccountsProps) {
   const navigate = useNavigate();
   const [showAddForm, setShowAddForm] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const [editingAccount, setEditingAccount] = useState<Account | undefined>(
     undefined,
   );
@@ -57,10 +67,19 @@ export function Accounts({ appData }: AccountsProps) {
   const [deletingAccount, setDeletingAccount] = useState<Account | undefined>(
     undefined,
   );
+  const accountCardRefs = useRef(new Map<AccountId, HTMLDivElement>());
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const searchTokens = useMemo(
+    () => normalizeAccountSearchValue(searchQuery).split(" ").filter(Boolean),
+    [searchQuery],
+  );
 
   const currencyGroups = useMemo((): CurrencyGroup[] => {
     const groups = new Map<string, Account[]>();
     for (const account of appData.data.accounts) {
+      if (!accountMatchesSearch(account, searchTokens)) continue;
+
       const existing = groups.get(account.currency);
       if (existing != null) {
         existing.push(account);
@@ -76,7 +95,52 @@ export function Accounts({ appData }: AccountsProps) {
       }
       return { currency, accounts, total };
     });
-  }, [appData.data.accounts, appData.accountBalances]);
+  }, [appData.data.accounts, appData.accountBalances, searchTokens]);
+
+  const visibleAccountIds = useMemo(
+    () =>
+      currencyGroups.flatMap((group) =>
+        group.accounts.map((account) => account.id),
+      ),
+    [currencyGroups],
+  );
+
+  const focusAccountCard = useCallback((accountId: AccountId | undefined) => {
+    if (accountId == null) return;
+    accountCardRefs.current.get(accountId)?.focus();
+  }, []);
+
+  const moveAccountFocus = useCallback(
+    (accountId: AccountId, offset: -1 | 1) => {
+      const currentIndex = visibleAccountIds.indexOf(accountId);
+      if (currentIndex === -1) return;
+
+      const nextIndex = Math.min(
+        visibleAccountIds.length - 1,
+        Math.max(0, currentIndex + offset),
+      );
+      focusAccountCard(visibleAccountIds[nextIndex]);
+    },
+    [focusAccountCard, visibleAccountIds],
+  );
+
+  const handleSearchKeyDown = useCallback(
+    (e: KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === "ArrowDown" && visibleAccountIds.length > 0) {
+        e.preventDefault();
+        focusAccountCard(visibleAccountIds[0]);
+      } else if (e.key === "Escape" && searchQuery.length > 0) {
+        e.preventDefault();
+        setSearchQuery("");
+      }
+    },
+    [focusAccountCard, searchQuery.length, visibleAccountIds],
+  );
+
+  const clearSearch = useCallback(() => {
+    setSearchQuery("");
+    searchInputRef.current?.focus();
+  }, []);
 
   const handleAddSave = useCallback(
     (name: string, currency: string) => {
@@ -119,6 +183,24 @@ export function Accounts({ appData }: AccountsProps) {
     [navigate],
   );
 
+  const handleAccountKeyDown = useCallback(
+    (e: KeyboardEvent<HTMLDivElement>, accountId: AccountId) => {
+      if (e.currentTarget !== e.target) return;
+
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        handleOpenTransactions(accountId);
+      } else if (e.key === "ArrowDown") {
+        e.preventDefault();
+        moveAccountFocus(accountId, 1);
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        moveAccountFocus(accountId, -1);
+      }
+    },
+    [handleOpenTransactions, moveAccountFocus],
+  );
+
   const txCountForAccount = useCallback(
     (accountId: AccountId) =>
       appData.data.transactions.filter(
@@ -137,6 +219,8 @@ export function Accounts({ appData }: AccountsProps) {
     adjustingAccount == null
       ? 0
       : (appData.accountBalances.get(adjustingAccount.id) ?? 0);
+  const hasAccounts = appData.data.accounts.length > 0;
+  const hasSearchQuery = searchQuery.trim().length > 0;
 
   return (
     <div className="space-y-6 p-4">
@@ -148,10 +232,47 @@ export function Accounts({ appData }: AccountsProps) {
         </Button>
       </div>
 
-      {currencyGroups.length === 0 && (
+      {hasAccounts && (
+        <div className="relative">
+          <Search
+            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+            aria-hidden="true"
+          />
+          <Input
+            ref={searchInputRef}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={handleSearchKeyDown}
+            className="pl-9 pr-10"
+            placeholder="Search accounts..."
+            aria-label="Search accounts"
+          />
+          {hasSearchQuery && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2"
+              aria-label="Clear account search"
+              onClick={clearSearch}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+      )}
+
+      {!hasAccounts && (
         <div className="py-12 text-center text-muted-foreground">
           <p>No accounts yet.</p>
           <p className="text-sm">Add your first account to get started.</p>
+        </div>
+      )}
+
+      {hasAccounts && currencyGroups.length === 0 && (
+        <div className="py-12 text-center text-muted-foreground">
+          <p>No accounts match this search.</p>
+          <p className="text-sm">Try a different account name or currency.</p>
         </div>
       )}
 
@@ -180,18 +301,20 @@ export function Accounts({ appData }: AccountsProps) {
             return (
               <Card
                 key={account.id}
+                ref={(node) => {
+                  if (node == null) {
+                    accountCardRefs.current.delete(account.id);
+                  } else {
+                    accountCardRefs.current.set(account.id, node);
+                  }
+                }}
                 role="button"
                 tabIndex={0}
                 aria-label={`View transactions for ${account.name}`}
                 title="View transactions"
                 className="flex cursor-pointer items-center justify-between p-3 transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 onClick={() => handleOpenTransactions(account.id)}
-                onKeyDown={(e) => {
-                  if (e.currentTarget !== e.target) return;
-                  if (e.key !== "Enter" && e.key !== " ") return;
-                  e.preventDefault();
-                  handleOpenTransactions(account.id);
-                }}
+                onKeyDown={(e) => handleAccountKeyDown(e, account.id)}
               >
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-medium">{account.name}</p>
@@ -241,6 +364,7 @@ export function Accounts({ appData }: AccountsProps) {
                     variant="ghost"
                     size="icon"
                     className="h-8 w-8"
+                    aria-label={`Edit ${account.name}`}
                     onClick={(e) => {
                       e.stopPropagation();
                       setEditingAccount(account);
@@ -252,6 +376,7 @@ export function Accounts({ appData }: AccountsProps) {
                     variant="ghost"
                     size="icon"
                     className="h-8 w-8 text-destructive hover:text-destructive"
+                    aria-label={`Delete ${account.name}`}
                     onClick={(e) => {
                       e.stopPropagation();
                       setDeletingAccount(account);
@@ -334,7 +459,25 @@ function buildLatestUpdateByAccount(
   return latest;
 }
 
-function accountUpdateStatus(latestUpdate: Date | undefined): AccountUpdateStatus {
+function normalizeAccountSearchValue(value: string): string {
+  return value.trim().replace(/\s+/g, " ").toLocaleLowerCase();
+}
+
+function accountMatchesSearch(
+  account: Account,
+  searchTokens: ReadonlyArray<string>,
+): boolean {
+  if (searchTokens.length === 0) return true;
+
+  const searchableValue = normalizeAccountSearchValue(
+    `${account.name} ${account.currency}`,
+  );
+  return searchTokens.every((token) => searchableValue.includes(token));
+}
+
+function accountUpdateStatus(
+  latestUpdate: Date | undefined,
+): AccountUpdateStatus {
   if (latestUpdate == null) {
     return {
       tone: "quiet",
