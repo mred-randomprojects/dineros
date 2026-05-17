@@ -92,6 +92,7 @@ export async function saveCloudData(
               deletedCategories,
               deletedTransactions,
             },
+            { conflictWinner: "local" },
           );
     const filteredData = filterDeletedEntriesFromAppData(
       mergedData,

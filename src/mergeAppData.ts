@@ -18,13 +18,24 @@ import {
   mergeDeletedTransactions,
 } from "./deletedEntries";
 
+type ConflictWinner = "local" | "cloud";
+
+interface MergeAppDataOptions {
+  conflictWinner?: ConflictWinner;
+}
+
 /**
  * Merges local and cloud AppData so that no live data is ever lost.
  * Mostly additive: items that exist in either source are kept unless a
  * deletion tombstone says that item was intentionally removed.
- * For items with the same ID in both, cloud wins (most recently synced).
+ * For items with the same ID in both, conflictWinner decides which source wins.
  */
-export function mergeAppData(local: AppData, cloud: AppData): AppData {
+export function mergeAppData(
+  local: AppData,
+  cloud: AppData,
+  options: MergeAppDataOptions = {},
+): AppData {
+  const conflictWinner = options.conflictWinner ?? "cloud";
   const deletedAccounts = mergeDeletedAccounts(
     local.deletedAccounts ?? [],
     cloud.deletedAccounts ?? [],
@@ -45,6 +56,7 @@ export function mergeAppData(local: AppData, cloud: AppData): AppData {
     local.categories,
     cloud.categories,
     deletedCategorySet,
+    conflictWinner,
   );
   const liveCategoryNames = new Set(
     categories.map((category) => normalizeCategoryLookupKey(category.name)),
@@ -56,7 +68,12 @@ export function mergeAppData(local: AppData, cloud: AppData): AppData {
   );
 
   return {
-    accounts: mergeAccounts(local.accounts, cloud.accounts, deletedAccountSet),
+    accounts: mergeAccounts(
+      local.accounts,
+      cloud.accounts,
+      deletedAccountSet,
+      conflictWinner,
+    ),
     categories,
     transactions: mergeTransactions(
       local.transactions,
@@ -64,6 +81,7 @@ export function mergeAppData(local: AppData, cloud: AppData): AppData {
       deletedAccountSet,
       deletedCategoryNameSet,
       deletedTransactionSet,
+      conflictWinner,
     ),
     deletedAccounts,
     deletedCategories,
@@ -71,19 +89,37 @@ export function mergeAppData(local: AppData, cloud: AppData): AppData {
   };
 }
 
+function sourcesByWinner<T>(
+  localItems: ReadonlyArray<T>,
+  cloudItems: ReadonlyArray<T>,
+  conflictWinner: ConflictWinner,
+): [ReadonlyArray<T>, ReadonlyArray<T>] {
+  return conflictWinner === "local"
+    ? [localItems, cloudItems]
+    : [cloudItems, localItems];
+}
+
 function mergeAccounts(
   localAccounts: ReadonlyArray<Account>,
   cloudAccounts: ReadonlyArray<Account>,
   deletedAccountSet: ReadonlySet<AccountId>,
+  conflictWinner: ConflictWinner,
 ): Account[] {
-  const liveCloudAccounts = cloudAccounts.filter(
+  const [preferredAccounts, fallbackAccounts] = sourcesByWinner(
+    localAccounts,
+    cloudAccounts,
+    conflictWinner,
+  );
+  const livePreferredAccounts = preferredAccounts.filter(
     (account) => !deletedAccountSet.has(account.id),
   );
-  const cloudIds = new Set<AccountId>(liveCloudAccounts.map((a) => a.id));
-  const localOnly = localAccounts.filter((a) => !cloudIds.has(a.id));
+  const preferredIds = new Set<AccountId>(
+    livePreferredAccounts.map((a) => a.id),
+  );
+  const fallbackOnly = fallbackAccounts.filter((a) => !preferredIds.has(a.id));
   return [
-    ...liveCloudAccounts,
-    ...localOnly.filter((account) => !deletedAccountSet.has(account.id)),
+    ...livePreferredAccounts,
+    ...fallbackOnly.filter((account) => !deletedAccountSet.has(account.id)),
   ];
 }
 
@@ -91,23 +127,31 @@ function mergeCategories(
   localCategories: ReadonlyArray<Category>,
   cloudCategories: ReadonlyArray<Category>,
   deletedCategorySet: ReadonlySet<CategoryId>,
+  conflictWinner: ConflictWinner,
 ): Category[] {
-  const liveCloudCategories = cloudCategories.filter(
+  const [preferredCategories, fallbackCategories] = sourcesByWinner(
+    localCategories,
+    cloudCategories,
+    conflictWinner,
+  );
+  const livePreferredCategories = preferredCategories.filter(
     (category) => !deletedCategorySet.has(category.id),
   );
-  const cloudIds = new Set<CategoryId>(liveCloudCategories.map((c) => c.id));
-  const cloudNames = new Set(
-    liveCloudCategories.map((category) =>
+  const preferredIds = new Set<CategoryId>(
+    livePreferredCategories.map((c) => c.id),
+  );
+  const preferredNames = new Set(
+    livePreferredCategories.map((category) =>
       normalizeCategoryLookupKey(category.name),
     ),
   );
-  const localOnly = localCategories.filter(
+  const fallbackOnly = fallbackCategories.filter(
     (category) =>
-      !cloudIds.has(category.id) &&
-      !cloudNames.has(normalizeCategoryLookupKey(category.name)) &&
+      !preferredIds.has(category.id) &&
+      !preferredNames.has(normalizeCategoryLookupKey(category.name)) &&
       !deletedCategorySet.has(category.id),
   );
-  return [...liveCloudCategories, ...localOnly];
+  return [...livePreferredCategories, ...fallbackOnly];
 }
 
 function mergeTransactions(
@@ -116,23 +160,29 @@ function mergeTransactions(
   deletedAccountSet: ReadonlySet<AccountId>,
   deletedCategoryNameSet: ReadonlySet<string>,
   deletedTransactionSet: ReadonlySet<TransactionId>,
+  conflictWinner: ConflictWinner,
 ): Transaction[] {
-  const liveCloudTransactions = cloudTransactions
+  const [preferredTransactions, fallbackTransactions] = sourcesByWinner(
+    localTransactions,
+    cloudTransactions,
+    conflictWinner,
+  );
+  const livePreferredTransactions = preferredTransactions
     .filter((tx) =>
       isLiveTransaction(tx, deletedAccountSet, deletedTransactionSet),
     )
     .map((tx) => clearDeletedCategory(tx, deletedCategoryNameSet));
-  const cloudIds = new Set<TransactionId>(
-    liveCloudTransactions.map((t) => t.id),
+  const preferredIds = new Set<TransactionId>(
+    livePreferredTransactions.map((t) => t.id),
   );
-  const localOnly = localTransactions
+  const fallbackOnly = fallbackTransactions
     .filter(
       (tx) =>
-        !cloudIds.has(tx.id) &&
+        !preferredIds.has(tx.id) &&
         isLiveTransaction(tx, deletedAccountSet, deletedTransactionSet),
     )
     .map((tx) => clearDeletedCategory(tx, deletedCategoryNameSet));
-  return [...liveCloudTransactions, ...localOnly];
+  return [...livePreferredTransactions, ...fallbackOnly];
 }
 
 function isLiveTransaction(

@@ -20,6 +20,7 @@ import { DiscardChangesDialog } from "./DiscardChangesDialog";
 
 const NONE_VALUE = "__none__";
 const CURRENCY_FIELDS = ["fromAmount", "toAmount", "exchangeRate"] as const;
+const DECIMAL_INPUT_PATTERN = "[0-9]*[.,]?[0-9]*";
 
 type CurrencyField = (typeof CURRENCY_FIELDS)[number];
 
@@ -421,9 +422,11 @@ export function TransactionForm({
               </Label>
               <Input
                 id="tx-from-amount"
-                type="number"
-                step="0.01"
-                min="0"
+                type="text"
+                inputMode="decimal"
+                pattern={DECIMAL_INPUT_PATTERN}
+                enterKeyHint="next"
+                autoComplete="off"
                 placeholder="0.00"
                 value={fromAmount}
                 onChange={(e) =>
@@ -441,9 +444,11 @@ export function TransactionForm({
               </Label>
               <Input
                 id="tx-to-amount"
-                type="number"
-                step="0.01"
-                min="0"
+                type="text"
+                inputMode="decimal"
+                pattern={DECIMAL_INPUT_PATTERN}
+                enterKeyHint="next"
+                autoComplete="off"
                 placeholder="0.00"
                 value={toAmount}
                 onChange={(e) =>
@@ -463,9 +468,11 @@ export function TransactionForm({
                 </span>
                 <Input
                   id="tx-exchange-rate"
-                  type="number"
-                  step="any"
-                  min="0"
+                  type="text"
+                  inputMode="decimal"
+                  pattern={DECIMAL_INPUT_PATTERN}
+                  enterKeyHint="next"
+                  autoComplete="off"
                   placeholder="0.00"
                   value={exchangeRate}
                   onChange={(e) =>
@@ -505,6 +512,8 @@ export function TransactionForm({
               id="tx-description"
               placeholder="e.g. Groceries, Initial balance"
               value={description}
+              enterKeyHint="next"
+              autoComplete="off"
               onChange={(e) => setDescription(e.target.value)}
               onKeyDown={handleFieldKeyDown}
             />
@@ -516,6 +525,7 @@ export function TransactionForm({
               id="tx-date"
               type="date"
               value={date}
+              enterKeyHint="done"
               onChange={(e) => setDate(e.target.value)}
               onClick={(e) => e.currentTarget.showPicker()}
               onKeyDown={handleDateKeyDown}
@@ -576,7 +586,7 @@ export function TransactionForm({
 
 function parseAmountInput(value: string): number | null {
   if (value.trim().length === 0) return null;
-  const parsed = Number(value);
+  const parsed = Number(value.trim().replace(",", "."));
   return Number.isFinite(parsed) ? parsed : null;
 }
 

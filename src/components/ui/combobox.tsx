@@ -14,6 +14,7 @@ interface ComboboxProps {
   onValueChange: (value: string) => void;
   placeholder?: string;
   allowCustomValue?: boolean;
+  enterKeyHint?: React.ComponentProps<"input">["enterKeyHint"];
 }
 
 export function Combobox({
@@ -23,6 +24,7 @@ export function Combobox({
   onValueChange,
   placeholder,
   allowCustomValue = false,
+  enterKeyHint = "next",
 }: ComboboxProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -125,6 +127,10 @@ export function Combobox({
         )}
         value={open ? search : selectedLabel}
         placeholder={placeholder}
+        autoComplete="off"
+        autoCorrect="off"
+        spellCheck={false}
+        enterKeyHint={enterKeyHint}
         onChange={handleChange}
         onFocus={handleFocus}
         onBlur={handleBlur}

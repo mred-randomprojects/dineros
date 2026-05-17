@@ -16,6 +16,8 @@ import { Label } from "./ui/label";
 import { DiscardChangesDialog } from "./DiscardChangesDialog";
 import { cn, focusNextInForm } from "@/lib/utils";
 
+const SIGNED_DECIMAL_INPUT_PATTERN = "-?[0-9]*[.,]?[0-9]*";
+
 export interface BalanceAdjustmentSaveInput {
   targetBalance: number;
   date: string;
@@ -168,8 +170,11 @@ export function BalanceAdjustmentForm({
               <Label htmlFor="adjust-target-balance">New balance</Label>
               <Input
                 id="adjust-target-balance"
-                type="number"
-                step="0.01"
+                type="text"
+                inputMode="decimal"
+                pattern={SIGNED_DECIMAL_INPUT_PATTERN}
+                enterKeyHint="next"
+                autoComplete="off"
                 placeholder="0.00"
                 value={targetBalance}
                 onChange={(e) => setTargetBalance(e.target.value)}
@@ -184,6 +189,8 @@ export function BalanceAdjustmentForm({
                 id="adjust-description"
                 placeholder="e.g. Interest, missing transaction, reconciliation"
                 value={description}
+                enterKeyHint="next"
+                autoComplete="off"
                 onChange={(e) => setDescription(e.target.value)}
                 onKeyDown={handleFieldKeyDown}
               />
@@ -195,6 +202,7 @@ export function BalanceAdjustmentForm({
                 id="adjust-date"
                 type="date"
                 value={date}
+                enterKeyHint="done"
                 onChange={(e) => setDate(e.target.value)}
                 onClick={(e) => e.currentTarget.showPicker()}
                 onKeyDown={handleDateKeyDown}
@@ -241,7 +249,7 @@ export function BalanceAdjustmentForm({
 
 function parseAmountInput(value: string): number | null {
   if (value.trim().length === 0) return null;
-  const parsed = Number(value);
+  const parsed = Number(value.trim().replace(",", "."));
   return Number.isFinite(parsed) ? parsed : null;
 }
 

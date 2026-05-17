@@ -106,6 +106,9 @@ export function CategoryForm({
                 id="category-name"
                 placeholder="e.g. Food, Rent"
                 value={name}
+                enterKeyHint="done"
+                autoComplete="off"
+                autoCapitalize="words"
                 onChange={(e) => setName(e.target.value)}
                 autoFocus
               />

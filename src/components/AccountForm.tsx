@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, type KeyboardEvent } from "react";
 import type { Account } from "../types";
 import {
   Dialog,
@@ -12,6 +12,7 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { DiscardChangesDialog } from "./DiscardChangesDialog";
+import { focusNextInForm } from "@/lib/utils";
 
 interface AccountFormProps {
   open: boolean;
@@ -74,6 +75,12 @@ export function AccountForm({
     closeWithoutPrompt();
   }
 
+  function handleNameKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    focusNextInForm(e.currentTarget, e.shiftKey);
+  }
+
   return (
     <>
       <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -95,7 +102,11 @@ export function AccountForm({
                 id="account-name"
                 placeholder="e.g. Cash wallet"
                 value={name}
+                enterKeyHint="next"
+                autoComplete="off"
+                autoCapitalize="words"
                 onChange={(e) => setName(e.target.value)}
+                onKeyDown={handleNameKeyDown}
                 autoFocus
               />
             </div>
@@ -105,6 +116,11 @@ export function AccountForm({
                 id="account-currency"
                 placeholder="e.g. ARS, USD"
                 value={currency}
+                enterKeyHint="done"
+                autoComplete="off"
+                autoCapitalize="characters"
+                autoCorrect="off"
+                spellCheck={false}
                 onChange={(e) => setCurrency(e.target.value)}
               />
             </div>

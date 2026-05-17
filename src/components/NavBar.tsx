@@ -4,13 +4,13 @@ import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
   { path: "/accounts", label: "Accounts", shortcut: "1", icon: Wallet },
-  { path: "/categories", label: "Categories", shortcut: "2", icon: Tags },
   {
     path: "/transactions",
     label: "Transactions",
-    shortcut: "3",
+    shortcut: "2",
     icon: ArrowLeftRight,
   },
+  { path: "/categories", label: "Categories", shortcut: "3", icon: Tags },
 ] as const;
 
 export function NavBar() {
@@ -18,8 +18,8 @@ export function NavBar() {
   const navigate = useNavigate();
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 border-t bg-card">
-      <div className="mx-auto flex max-w-lg">
+    <nav className="fixed inset-x-0 bottom-0 z-40 border-t bg-card/95 px-3 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 backdrop-blur-sm">
+      <div className="mx-auto flex max-w-lg items-center gap-1">
         {NAV_ITEMS.map((item) => {
           const isActive =
             location.pathname === item.path ||
@@ -29,8 +29,10 @@ export function NavBar() {
               key={item.path}
               onClick={() => navigate(item.path)}
               aria-label={`${item.label} (${item.shortcut})`}
+              aria-keyshortcuts={item.shortcut}
+              title={`${item.label} (${item.shortcut})`}
               className={cn(
-                "flex flex-1 flex-col items-center gap-1 py-2 text-xs transition-colors",
+                "flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-lg px-2 py-2 text-xs transition-colors",
                 isActive
                   ? "text-primary"
                   : "text-muted-foreground hover:text-foreground",

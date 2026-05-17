@@ -41,21 +41,30 @@ function AuthenticatedApp() {
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
 
       if (e.target instanceof HTMLElement) {
         const tag = e.target.tagName;
         if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
         if (e.target.isContentEditable) return;
-        if (e.target.closest('[role="dialog"]') != null) return;
+        if (
+          e.target.closest(
+            '[role="dialog"], [role="listbox"], [role="menu"], [data-radix-popper-content-wrapper]',
+          ) != null
+        ) {
+          return;
+        }
       }
 
       if (e.key === "1") {
+        e.preventDefault();
         navigate("/accounts");
       } else if (e.key === "2") {
-        navigate("/categories");
-      } else if (e.key === "3") {
+        e.preventDefault();
         navigate("/transactions");
+      } else if (e.key === "3") {
+        e.preventDefault();
+        navigate("/categories");
       }
     }
 
@@ -64,7 +73,7 @@ function AuthenticatedApp() {
   }, [navigate]);
 
   return (
-    <div className="mx-auto min-h-dvh max-w-lg pb-20">
+    <div className="mx-auto min-h-dvh max-w-lg pb-[calc(5.5rem+env(safe-area-inset-bottom))]">
       <Routes>
         <Route path="/" element={<Navigate to="/accounts" replace />} />
         <Route path="/accounts" element={<Accounts appData={appData} />} />
@@ -90,7 +99,7 @@ function AuthenticatedApp() {
       <button
         onClick={appData.forceCloudSync}
         disabled={appData.cloudSyncing}
-        className="fixed bottom-20 right-3 z-40 flex items-center gap-1.5 rounded-full bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow-lg active:scale-95 disabled:opacity-50"
+        className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom))] right-3 z-40 flex items-center gap-1.5 rounded-full bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow-lg active:scale-95 disabled:opacity-50"
       >
         {appData.cloudSyncing ? (
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
