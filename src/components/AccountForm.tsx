@@ -14,10 +14,16 @@ import { Label } from "./ui/label";
 import { DiscardChangesDialog } from "./DiscardChangesDialog";
 import { focusNextInForm } from "@/lib/utils";
 
+export interface AccountFormValues {
+  name: string;
+  currency: string;
+  hideBalanceByDefault: boolean;
+}
+
 interface AccountFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSave: (name: string, currency: string) => void;
+  onSave: (values: AccountFormValues) => void;
   account?: Account;
 }
 
@@ -29,25 +35,35 @@ export function AccountForm({
 }: AccountFormProps) {
   const [name, setName] = useState("");
   const [currency, setCurrency] = useState("");
+  const [hideBalanceByDefault, setHideBalanceByDefault] = useState(false);
   const [initialName, setInitialName] = useState("");
   const [initialCurrency, setInitialCurrency] = useState("");
+  const [initialHideBalanceByDefault, setInitialHideBalanceByDefault] =
+    useState(false);
   const [discardDialogOpen, setDiscardDialogOpen] = useState(false);
 
   useEffect(() => {
     if (open) {
       const nextName = account?.name ?? "";
       const nextCurrency = account?.currency ?? "";
+      const nextHideBalanceByDefault = account?.hideBalanceByDefault === true;
       setName(nextName);
       setCurrency(nextCurrency);
+      setHideBalanceByDefault(nextHideBalanceByDefault);
       setInitialName(nextName);
       setInitialCurrency(nextCurrency);
+      setInitialHideBalanceByDefault(nextHideBalanceByDefault);
       setDiscardDialogOpen(false);
     }
   }, [open, account]);
 
   const isEditing = account != null;
   const canSubmit = name.trim().length > 0 && currency.trim().length > 0;
-  const isDirty = open && (name !== initialName || currency !== initialCurrency);
+  const isDirty =
+    open &&
+    (name !== initialName ||
+      currency !== initialCurrency ||
+      hideBalanceByDefault !== initialHideBalanceByDefault);
 
   function closeWithoutPrompt() {
     setDiscardDialogOpen(false);
@@ -71,7 +87,11 @@ export function AccountForm({
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!canSubmit) return;
-    onSave(name.trim(), currency.trim().toUpperCase());
+    onSave({
+      name: name.trim(),
+      currency: currency.trim().toUpperCase(),
+      hideBalanceByDefault,
+    });
     closeWithoutPrompt();
   }
 
@@ -124,6 +144,19 @@ export function AccountForm({
                 onChange={(e) => setCurrency(e.target.value)}
               />
             </div>
+            <label
+              htmlFor="account-hide-balance"
+              className="flex cursor-pointer items-center gap-3 rounded-lg border border-input bg-background px-3 py-2 text-sm"
+            >
+              <input
+                id="account-hide-balance"
+                type="checkbox"
+                className="h-4 w-4 rounded border-input accent-primary"
+                checked={hideBalanceByDefault}
+                onChange={(e) => setHideBalanceByDefault(e.target.checked)}
+              />
+              <span>Hide balances by default</span>
+            </label>
             <DialogFooter>
               <Button
                 type="button"

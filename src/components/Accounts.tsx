@@ -2,6 +2,7 @@ import {
   useState,
   useMemo,
   useCallback,
+  useEffect,
   useRef,
   type KeyboardEvent,
 } from "react";
@@ -11,6 +12,8 @@ import {
   CheckCircle2,
   CircleMinus,
   Clock3,
+  Eye,
+  EyeOff,
   Plus,
   Pencil,
   Search,
@@ -24,7 +27,7 @@ import { formatAmount } from "../types";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
 import { Input } from "./ui/input";
-import { AccountForm } from "./AccountForm";
+import { AccountForm, type AccountFormValues } from "./AccountForm";
 import {
   BalanceAdjustmentForm,
   type BalanceAdjustmentSaveInput,
@@ -57,6 +60,7 @@ const AGING_UPDATE_DAYS = 30;
 export function Accounts({ appData }: AccountsProps) {
   const navigate = useNavigate();
   const [showAddForm, setShowAddForm] = useState(false);
+  const [showHiddenBalances, setShowHiddenBalances] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [editingAccount, setEditingAccount] = useState<Account | undefined>(
     undefined,
@@ -105,6 +109,17 @@ export function Accounts({ appData }: AccountsProps) {
     [currencyGroups],
   );
 
+  const hasDefaultHiddenBalances = useMemo(
+    () => appData.data.accounts.some(accountHidesBalanceByDefault),
+    [appData.data.accounts],
+  );
+
+  useEffect(() => {
+    if (!hasDefaultHiddenBalances) {
+      setShowHiddenBalances(false);
+    }
+  }, [hasDefaultHiddenBalances]);
+
   const focusAccountCard = useCallback((accountId: AccountId | undefined) => {
     if (accountId == null) return;
     accountCardRefs.current.get(accountId)?.focus();
@@ -143,16 +158,16 @@ export function Accounts({ appData }: AccountsProps) {
   }, []);
 
   const handleAddSave = useCallback(
-    (name: string, currency: string) => {
-      appData.addAccount({ name, currency });
+    (values: AccountFormValues) => {
+      appData.addAccount(values);
     },
     [appData],
   );
 
   const handleEditSave = useCallback(
-    (name: string, currency: string) => {
+    (values: AccountFormValues) => {
       if (editingAccount == null) return;
-      appData.updateAccount(editingAccount.id, { name, currency });
+      appData.updateAccount(editingAccount.id, values);
       setEditingAccount(undefined);
     },
     [appData, editingAccount],
@@ -226,10 +241,26 @@ export function Accounts({ appData }: AccountsProps) {
     <div className="space-y-6 p-4">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold">Accounts</h1>
-        <Button size="sm" onClick={() => setShowAddForm(true)}>
-          <Plus className="mr-1 h-4 w-4" />
-          Add
-        </Button>
+        <div className="flex items-center gap-2">
+          {hasDefaultHiddenBalances && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setShowHiddenBalances((current) => !current)}
+            >
+              {showHiddenBalances ? (
+                <EyeOff className="mr-1 h-4 w-4" />
+              ) : (
+                <Eye className="mr-1 h-4 w-4" />
+              )}
+              {showHiddenBalances ? "Hide defaults" : "Show all"}
+            </Button>
+          )}
+          <Button size="sm" onClick={() => setShowAddForm(true)}>
+            <Plus className="mr-1 h-4 w-4" />
+            Add
+          </Button>
+        </div>
       </div>
 
       {hasAccounts && (
@@ -276,120 +307,136 @@ export function Accounts({ appData }: AccountsProps) {
         </div>
       )}
 
-      {currencyGroups.map((group) => (
-        <div key={group.currency} className="space-y-2">
-          <div className="flex items-baseline justify-between px-1">
-            <span className="text-sm font-medium text-muted-foreground">
-              {group.currency}
-            </span>
-            <span
-              className={cn(
-                "text-sm font-semibold",
-                group.total >= 0 ? "text-emerald-400" : "text-destructive",
-              )}
-            >
-              {formatAmount(group.total)}
-            </span>
-          </div>
+      {currencyGroups.map((group) => {
+        const isTotalHidden =
+          !showHiddenBalances &&
+          group.accounts.some(accountHidesBalanceByDefault);
 
-          {group.accounts.map((account) => {
-            const balance = appData.accountBalances.get(account.id) ?? 0;
-            const updateStatus = accountUpdateStatus(
-              latestUpdateByAccount.get(account.id),
-            );
-            const StatusIcon = updateStatus.Icon;
-            return (
-              <Card
-                key={account.id}
-                ref={(node) => {
-                  if (node == null) {
-                    accountCardRefs.current.delete(account.id);
-                  } else {
-                    accountCardRefs.current.set(account.id, node);
-                  }
-                }}
-                role="button"
-                tabIndex={0}
-                aria-label={`View transactions for ${account.name}`}
-                title="View transactions"
-                className="flex cursor-pointer items-center justify-between p-3 transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                onClick={() => handleOpenTransactions(account.id)}
-                onKeyDown={(e) => handleAccountKeyDown(e, account.id)}
+        return (
+          <div key={group.currency} className="space-y-2">
+            <div className="flex items-baseline justify-between px-1">
+              <span className="text-sm font-medium text-muted-foreground">
+                {group.currency}
+              </span>
+              <span
+                className={cn(
+                  "text-sm font-semibold",
+                  isTotalHidden
+                    ? "text-muted-foreground"
+                    : group.total >= 0
+                      ? "text-emerald-400"
+                      : "text-destructive",
+                )}
               >
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium">{account.name}</p>
-                  <p
-                    className={cn(
-                      "text-sm font-semibold",
-                      balance >= 0
-                        ? "text-emerald-400"
-                        : "text-destructive",
-                    )}
-                  >
-                    {formatAmount(balance)} {account.currency}
-                  </p>
-                  <p
-                    className="mt-1 flex items-center gap-1.5 truncate text-xs text-muted-foreground"
-                    title={updateStatus.title}
-                    aria-label={`${account.name}: ${updateStatus.title}`}
-                  >
-                    <StatusIcon
+                {isTotalHidden ? "Hidden" : formatAmount(group.total)}
+              </span>
+            </div>
+
+            {group.accounts.map((account) => {
+              const balance = appData.accountBalances.get(account.id) ?? 0;
+              const isBalanceHidden =
+                !showHiddenBalances && accountHidesBalanceByDefault(account);
+              const updateStatus = accountUpdateStatus(
+                latestUpdateByAccount.get(account.id),
+              );
+              const StatusIcon = updateStatus.Icon;
+              return (
+                <Card
+                  key={account.id}
+                  ref={(node) => {
+                    if (node == null) {
+                      accountCardRefs.current.delete(account.id);
+                    } else {
+                      accountCardRefs.current.set(account.id, node);
+                    }
+                  }}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`View transactions for ${account.name}`}
+                  title="View transactions"
+                  className="flex cursor-pointer items-center justify-between p-3 transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                  onClick={() => handleOpenTransactions(account.id)}
+                  onKeyDown={(e) => handleAccountKeyDown(e, account.id)}
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-medium">{account.name}</p>
+                    <p
                       className={cn(
-                        "h-3.5 w-3.5 shrink-0",
-                        updateStatus.tone === "fresh" && "text-emerald-400",
-                        updateStatus.tone === "aging" && "text-amber-300",
-                        updateStatus.tone === "quiet" &&
-                          "text-muted-foreground",
+                        "text-sm font-semibold",
+                        isBalanceHidden
+                          ? "text-muted-foreground"
+                          : balance >= 0
+                            ? "text-emerald-400"
+                            : "text-destructive",
                       )}
-                      aria-hidden="true"
-                    />
-                    <span className="truncate">{updateStatus.label}</span>
-                  </p>
-                </div>
-                <div className="flex gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8"
-                    aria-label={`Adjust balance for ${account.name}`}
-                    title="Adjust balance"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setAdjustingAccount(account);
-                    }}
-                  >
-                    <Scale className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8"
-                    aria-label={`Edit ${account.name}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setEditingAccount(account);
-                    }}
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 text-destructive hover:text-destructive"
-                    aria-label={`Delete ${account.name}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setDeletingAccount(account);
-                    }}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              </Card>
-            );
-          })}
-        </div>
-      ))}
+                    >
+                      {isBalanceHidden
+                        ? `Hidden ${account.currency}`
+                        : `${formatAmount(balance)} ${account.currency}`}
+                    </p>
+                    <p
+                      className="mt-1 flex items-center gap-1.5 truncate text-xs text-muted-foreground"
+                      title={updateStatus.title}
+                      aria-label={`${account.name}: ${updateStatus.title}`}
+                    >
+                      <StatusIcon
+                        className={cn(
+                          "h-3.5 w-3.5 shrink-0",
+                          updateStatus.tone === "fresh" && "text-emerald-400",
+                          updateStatus.tone === "aging" && "text-amber-300",
+                          updateStatus.tone === "quiet" &&
+                            "text-muted-foreground",
+                        )}
+                        aria-hidden="true"
+                      />
+                      <span className="truncate">{updateStatus.label}</span>
+                    </p>
+                  </div>
+                  <div className="flex gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      aria-label={`Adjust balance for ${account.name}`}
+                      title="Adjust balance"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setAdjustingAccount(account);
+                      }}
+                    >
+                      <Scale className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      aria-label={`Edit ${account.name}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingAccount(account);
+                      }}
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-destructive hover:text-destructive"
+                      aria-label={`Delete ${account.name}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDeletingAccount(account);
+                      }}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        );
+      })}
 
       <AccountForm
         open={showAddForm}
@@ -473,6 +520,10 @@ function accountMatchesSearch(
     `${account.name} ${account.currency}`,
   );
   return searchTokens.every((token) => searchableValue.includes(token));
+}
+
+function accountHidesBalanceByDefault(account: Account): boolean {
+  return account.hideBalanceByDefault === true;
 }
 
 function accountUpdateStatus(

@@ -11,6 +11,7 @@ export interface Account {
   id: AccountId;
   name: string;
   currency: string;
+  hideBalanceByDefault?: boolean;
   createdAt: string;
 }
 
@@ -163,6 +164,8 @@ function normalizeAccount(raw: unknown): Account | null {
     id: id as AccountId,
     name,
     currency,
+    hideBalanceByDefault:
+      booleanValue(raw.hideBalanceByDefault) === true ? true : undefined,
     createdAt: stringValue(raw.createdAt) ?? new Date().toISOString(),
   };
 }
