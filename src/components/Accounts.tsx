@@ -1,7 +1,17 @@
 import { useState, useMemo, useCallback } from "react";
-import { Plus, Pencil, Scale, Trash2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { differenceInCalendarDays, format, isValid, parseISO } from "date-fns";
+import {
+  CheckCircle2,
+  CircleMinus,
+  Clock3,
+  Plus,
+  Pencil,
+  Scale,
+  Trash2,
+} from "lucide-react";
 import type { AppDataHandle } from "../appDataType";
-import type { Account, AccountId } from "../types";
+import type { Account, AccountId, Transaction } from "../types";
 import { formatAmount } from "../types";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
@@ -23,7 +33,20 @@ interface CurrencyGroup {
   total: number;
 }
 
+type AccountUpdateTone = "fresh" | "aging" | "quiet";
+
+interface AccountUpdateStatus {
+  tone: AccountUpdateTone;
+  label: string;
+  title: string;
+  Icon: typeof CheckCircle2;
+}
+
+const FRESH_UPDATE_DAYS = 7;
+const AGING_UPDATE_DAYS = 30;
+
 export function Accounts({ appData }: AccountsProps) {
+  const navigate = useNavigate();
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingAccount, setEditingAccount] = useState<Account | undefined>(
     undefined,
@@ -89,12 +112,24 @@ export function Accounts({ appData }: AccountsProps) {
     [adjustingAccount, appData],
   );
 
+  const handleOpenTransactions = useCallback(
+    (accountId: AccountId) => {
+      navigate(`/transactions?accountId=${encodeURIComponent(accountId)}`);
+    },
+    [navigate],
+  );
+
   const txCountForAccount = useCallback(
     (accountId: AccountId) =>
       appData.data.transactions.filter(
         (tx) =>
           tx.fromAccountId === accountId || tx.toAccountId === accountId,
       ).length,
+    [appData.data.transactions],
+  );
+
+  const latestUpdateByAccount = useMemo(
+    () => buildLatestUpdateByAccount(appData.data.transactions),
     [appData.data.transactions],
   );
 
@@ -138,8 +173,26 @@ export function Accounts({ appData }: AccountsProps) {
 
           {group.accounts.map((account) => {
             const balance = appData.accountBalances.get(account.id) ?? 0;
+            const updateStatus = accountUpdateStatus(
+              latestUpdateByAccount.get(account.id),
+            );
+            const StatusIcon = updateStatus.Icon;
             return (
-              <Card key={account.id} className="flex items-center justify-between p-3">
+              <Card
+                key={account.id}
+                role="button"
+                tabIndex={0}
+                aria-label={`View transactions for ${account.name}`}
+                title="View transactions"
+                className="flex cursor-pointer items-center justify-between p-3 transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                onClick={() => handleOpenTransactions(account.id)}
+                onKeyDown={(e) => {
+                  if (e.currentTarget !== e.target) return;
+                  if (e.key !== "Enter" && e.key !== " ") return;
+                  e.preventDefault();
+                  handleOpenTransactions(account.id);
+                }}
+              >
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-medium">{account.name}</p>
                   <p
@@ -152,6 +205,23 @@ export function Accounts({ appData }: AccountsProps) {
                   >
                     {formatAmount(balance)} {account.currency}
                   </p>
+                  <p
+                    className="mt-1 flex items-center gap-1.5 truncate text-xs text-muted-foreground"
+                    title={updateStatus.title}
+                    aria-label={`${account.name}: ${updateStatus.title}`}
+                  >
+                    <StatusIcon
+                      className={cn(
+                        "h-3.5 w-3.5 shrink-0",
+                        updateStatus.tone === "fresh" && "text-emerald-400",
+                        updateStatus.tone === "aging" && "text-amber-300",
+                        updateStatus.tone === "quiet" &&
+                          "text-muted-foreground",
+                      )}
+                      aria-hidden="true"
+                    />
+                    <span className="truncate">{updateStatus.label}</span>
+                  </p>
                 </div>
                 <div className="flex gap-1">
                   <Button
@@ -160,7 +230,10 @@ export function Accounts({ appData }: AccountsProps) {
                     className="h-8 w-8"
                     aria-label={`Adjust balance for ${account.name}`}
                     title="Adjust balance"
-                    onClick={() => setAdjustingAccount(account)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setAdjustingAccount(account);
+                    }}
                   >
                     <Scale className="h-3.5 w-3.5" />
                   </Button>
@@ -168,7 +241,10 @@ export function Accounts({ appData }: AccountsProps) {
                     variant="ghost"
                     size="icon"
                     className="h-8 w-8"
-                    onClick={() => setEditingAccount(account)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditingAccount(account);
+                    }}
                   >
                     <Pencil className="h-3.5 w-3.5" />
                   </Button>
@@ -176,7 +252,10 @@ export function Accounts({ appData }: AccountsProps) {
                     variant="ghost"
                     size="icon"
                     className="h-8 w-8 text-destructive hover:text-destructive"
-                    onClick={() => setDeletingAccount(account)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDeletingAccount(account);
+                    }}
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>
@@ -227,4 +306,78 @@ export function Accounts({ appData }: AccountsProps) {
       />
     </div>
   );
+}
+
+function buildLatestUpdateByAccount(
+  transactions: ReadonlyArray<Transaction>,
+): Map<AccountId, Date> {
+  const latest = new Map<AccountId, Date>();
+
+  function record(accountId: AccountId | null, date: Date) {
+    if (accountId == null) return;
+    const existing = latest.get(accountId);
+    if (existing == null || date > existing) {
+      latest.set(accountId, date);
+    }
+  }
+
+  for (const tx of transactions) {
+    if (tx.isExpected === true) continue;
+
+    const date = parseISO(tx.date);
+    if (!isValid(date)) continue;
+
+    record(tx.fromAccountId, date);
+    record(tx.toAccountId, date);
+  }
+
+  return latest;
+}
+
+function accountUpdateStatus(latestUpdate: Date | undefined): AccountUpdateStatus {
+  if (latestUpdate == null) {
+    return {
+      tone: "quiet",
+      label: "No updates yet",
+      title: "No transactions recorded for this account.",
+      Icon: CircleMinus,
+    };
+  }
+
+  const daysSinceUpdate = Math.max(
+    0,
+    differenceInCalendarDays(new Date(), latestUpdate),
+  );
+  const updateDate = format(latestUpdate, "MMM d, yyyy");
+
+  if (daysSinceUpdate <= FRESH_UPDATE_DAYS) {
+    return {
+      tone: "fresh",
+      label: relativeUpdateLabel(daysSinceUpdate),
+      title: `Last transaction update: ${updateDate}.`,
+      Icon: CheckCircle2,
+    };
+  }
+
+  if (daysSinceUpdate <= AGING_UPDATE_DAYS) {
+    return {
+      tone: "aging",
+      label: `No updates for ${daysSinceUpdate} days`,
+      title: `Last transaction update: ${updateDate}.`,
+      Icon: Clock3,
+    };
+  }
+
+  return {
+    tone: "quiet",
+    label: `Quiet since ${format(latestUpdate, "MMM d")}`,
+    title: `Last transaction update: ${updateDate}.`,
+    Icon: CircleMinus,
+  };
+}
+
+function relativeUpdateLabel(daysSinceUpdate: number): string {
+  if (daysSinceUpdate === 0) return "Updated today";
+  if (daysSinceUpdate === 1) return "Updated yesterday";
+  return `Updated ${daysSinceUpdate} days ago`;
 }

@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
+import { useSearchParams } from "react-router-dom";
 import { format, parseISO } from "date-fns";
 import {
   Plus,
@@ -30,6 +31,7 @@ import { ConfirmDialog } from "./ConfirmDialog";
 import { cn } from "@/lib/utils";
 
 const ALL_ACCOUNTS_VALUE = "__all__";
+const ACCOUNT_ID_PARAM = "accountId";
 
 interface TransactionsProps {
   appData: AppDataHandle;
@@ -39,6 +41,12 @@ interface DateGroup {
   date: string;
   label: string;
   transactions: Transaction[];
+}
+
+interface AccountMovementSummary {
+  incoming: number;
+  outgoing: number;
+  net: number;
 }
 
 function isInteractiveTarget(target: EventTarget | null): boolean {
@@ -59,6 +67,7 @@ function isInteractiveTarget(target: EventTarget | null): boolean {
 }
 
 export function Transactions({ appData }: TransactionsProps) {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<
     Transaction | undefined
@@ -67,9 +76,40 @@ export function Transactions({ appData }: TransactionsProps) {
     Transaction | undefined
   >(undefined);
   const [showImportDialog, setShowImportDialog] = useState(false);
-  const [filterAccountId, setFilterAccountId] =
-    useState<string>(ALL_ACCOUNTS_VALUE);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const queryAccountId = searchParams.get(ACCOUNT_ID_PARAM);
+  const selectedAccount =
+    queryAccountId == null
+      ? null
+      : (appData.accountsMap.get(queryAccountId as AccountId) ?? null);
+  const filterAccountId = selectedAccount?.id ?? ALL_ACCOUNTS_VALUE;
+
+  useEffect(() => {
+    if (queryAccountId == null || selectedAccount != null) return;
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        next.delete(ACCOUNT_ID_PARAM);
+        return next;
+      },
+      { replace: true },
+    );
+  }, [queryAccountId, selectedAccount, setSearchParams]);
+
+  const handleFilterAccountChange = useCallback(
+    (accountId: string) => {
+      setSearchParams((current) => {
+        const next = new URLSearchParams(current);
+        if (accountId === ALL_ACCOUNTS_VALUE) {
+          next.delete(ACCOUNT_ID_PARAM);
+        } else {
+          next.set(ACCOUNT_ID_PARAM, accountId);
+        }
+        return next;
+      });
+    },
+    [setSearchParams],
+  );
 
   const filteredTransactions = useMemo(() => {
     if (filterAccountId === ALL_ACCOUNTS_VALUE) {
@@ -81,6 +121,28 @@ export function Transactions({ appData }: TransactionsProps) {
         tx.toAccountId === filterAccountId,
     );
   }, [appData.data.transactions, filterAccountId]);
+
+  const accountMovementSummary = useMemo((): AccountMovementSummary | null => {
+    if (selectedAccount == null) return null;
+
+    let incoming = 0;
+    let outgoing = 0;
+    for (const tx of filteredTransactions) {
+      if (tx.isExpected === true) continue;
+      if (tx.toAccountId === selectedAccount.id) {
+        incoming += tx.toAmount ?? 0;
+      }
+      if (tx.fromAccountId === selectedAccount.id) {
+        outgoing += tx.fromAmount ?? 0;
+      }
+    }
+
+    return {
+      incoming,
+      outgoing,
+      net: incoming - outgoing,
+    };
+  }, [filteredTransactions, selectedAccount]);
 
   const dateGroups = useMemo((): DateGroup[] => {
     const sorted = [...filteredTransactions].sort((a, b) => {
@@ -254,7 +316,10 @@ export function Transactions({ appData }: TransactionsProps) {
       </div>
 
       {appData.data.accounts.length > 0 && (
-        <Select value={filterAccountId} onValueChange={setFilterAccountId}>
+        <Select
+          value={filterAccountId}
+          onValueChange={handleFilterAccountChange}
+        >
           <SelectTrigger>
             <SelectValue placeholder="Filter by account" />
           </SelectTrigger>
@@ -269,10 +334,70 @@ export function Transactions({ appData }: TransactionsProps) {
         </Select>
       )}
 
+      {selectedAccount != null && accountMovementSummary != null && (
+        <div className="rounded-lg border bg-card p-3">
+          <div className="flex items-baseline justify-between gap-3">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium">
+                {selectedAccount.name}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {filteredTransactions.length} transaction
+                {filteredTransactions.length === 1 ? "" : "s"}
+              </p>
+            </div>
+            <p
+              className={cn(
+                "shrink-0 text-sm font-semibold",
+                (appData.accountBalances.get(selectedAccount.id) ?? 0) >= 0
+                  ? "text-emerald-400"
+                  : "text-destructive",
+              )}
+            >
+              {formatAmount(appData.accountBalances.get(selectedAccount.id) ?? 0)}{" "}
+              {selectedAccount.currency}
+            </p>
+          </div>
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            <MovementMetric
+              label="In"
+              value={accountMovementSummary.incoming}
+              currency={selectedAccount.currency}
+              valueClassName="text-emerald-400"
+            />
+            <MovementMetric
+              label="Out"
+              value={accountMovementSummary.outgoing}
+              currency={selectedAccount.currency}
+              valueClassName="text-destructive"
+            />
+            <MovementMetric
+              label="Net"
+              value={accountMovementSummary.net}
+              currency={selectedAccount.currency}
+              valueClassName={
+                accountMovementSummary.net >= 0
+                  ? "text-emerald-400"
+                  : "text-destructive"
+              }
+              showSign
+            />
+          </div>
+        </div>
+      )}
+
       {dateGroups.length === 0 && (
         <div className="py-12 text-center text-muted-foreground">
-          <p>No transactions yet.</p>
-          <p className="text-sm">Add your first transaction to get started.</p>
+          <p>
+            {selectedAccount == null
+              ? "No transactions yet."
+              : "No transactions for this account."}
+          </p>
+          <p className="text-sm">
+            {selectedAccount == null
+              ? "Add your first transaction to get started."
+              : "Transactions involving this account will appear here."}
+          </p>
         </div>
       )}
 
@@ -471,6 +596,37 @@ export function Transactions({ appData }: TransactionsProps) {
         }
         onConfirm={handleDelete}
       />
+    </div>
+  );
+}
+
+function MovementMetric({
+  label,
+  value,
+  currency,
+  valueClassName,
+  showSign = false,
+}: {
+  label: string;
+  value: number;
+  currency: string;
+  valueClassName?: string;
+  showSign?: boolean;
+}) {
+  return (
+    <div className="min-w-0 rounded-md bg-muted/50 p-2">
+      <p className="text-[11px] font-medium uppercase text-muted-foreground">
+        {label}
+      </p>
+      <p
+        className={cn(
+          "mt-1 break-words text-xs font-semibold leading-tight",
+          valueClassName,
+        )}
+      >
+        {showSign && value > 0 ? "+" : ""}
+        {formatAmount(value)} {currency}
+      </p>
     </div>
   );
 }
