@@ -32,6 +32,10 @@ import {
   BalanceAdjustmentForm,
   type BalanceAdjustmentSaveInput,
 } from "./BalanceAdjustmentForm";
+import {
+  AccountUpToDateForm,
+  type AccountUpToDateFormValues,
+} from "./AccountUpToDateForm";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { cn } from "@/lib/utils";
 
@@ -46,9 +50,16 @@ interface CurrencyGroup {
 }
 
 type AccountUpdateTone = "fresh" | "aging" | "quiet";
+type AccountUpdateSource = "transaction" | "manual";
+
+interface AccountUpdate {
+  date: Date;
+  source: AccountUpdateSource;
+}
 
 interface AccountUpdateStatus {
   tone: AccountUpdateTone;
+  source?: AccountUpdateSource;
   label: string;
   title: string;
   Icon: typeof CheckCircle2;
@@ -66,6 +77,9 @@ export function Accounts({ appData }: AccountsProps) {
     undefined,
   );
   const [adjustingAccount, setAdjustingAccount] = useState<
+    Account | undefined
+  >(undefined);
+  const [markingUpToDateAccount, setMarkingUpToDateAccount] = useState<
     Account | undefined
   >(undefined);
   const [deletingAccount, setDeletingAccount] = useState<Account | undefined>(
@@ -189,6 +203,18 @@ export function Accounts({ appData }: AccountsProps) {
       setAdjustingAccount(undefined);
     },
     [adjustingAccount, appData],
+  );
+
+  const handleUpToDateSave = useCallback(
+    (values: AccountUpToDateFormValues) => {
+      if (markingUpToDateAccount == null) return;
+      appData.updateAccount(markingUpToDateAccount.id, {
+        comment: values.comment,
+        markedUpToDateAt: new Date().toISOString(),
+      });
+      setMarkingUpToDateAccount(undefined);
+    },
+    [appData, markingUpToDateAccount],
   );
 
   const handleOpenTransactions = useCallback(
@@ -338,8 +364,11 @@ export function Accounts({ appData }: AccountsProps) {
                 !showHiddenBalances && accountHidesBalanceByDefault(account);
               const updateStatus = accountUpdateStatus(
                 latestUpdateByAccount.get(account.id),
+                account.markedUpToDateAt,
               );
               const StatusIcon = updateStatus.Icon;
+              const commentLabel =
+                updateStatus.source === "manual" ? "Still updated" : "Note";
               return (
                 <Card
                   key={account.id}
@@ -354,7 +383,7 @@ export function Accounts({ appData }: AccountsProps) {
                   tabIndex={0}
                   aria-label={`View transactions for ${account.name}`}
                   title="View transactions"
-                  className="flex cursor-pointer items-center justify-between p-3 transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                  className="flex cursor-pointer items-start justify-between gap-3 p-3 transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                   onClick={() => handleOpenTransactions(account.id)}
                   onKeyDown={(e) => handleAccountKeyDown(e, account.id)}
                 >
@@ -391,8 +420,32 @@ export function Accounts({ appData }: AccountsProps) {
                       />
                       <span className="truncate">{updateStatus.label}</span>
                     </p>
+                    {account.comment != null && account.comment.length > 0 && (
+                      <p
+                        className="mt-1 break-words text-xs leading-snug text-muted-foreground"
+                        title={account.comment}
+                      >
+                        <span className="font-medium text-foreground/80">
+                          {commentLabel}:{" "}
+                        </span>
+                        {account.comment}
+                      </p>
+                    )}
                   </div>
-                  <div className="flex gap-1">
+                  <div className="flex shrink-0 gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      aria-label={`Mark ${account.name} up to date`}
+                      title="Mark up to date"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setMarkingUpToDateAccount(account);
+                      }}
+                    >
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                    </Button>
                     <Button
                       variant="ghost"
                       size="icon"
@@ -463,6 +516,15 @@ export function Accounts({ appData }: AccountsProps) {
         currentBalance={adjustingAccountBalance}
       />
 
+      <AccountUpToDateForm
+        open={markingUpToDateAccount != null}
+        onOpenChange={(open) => {
+          if (!open) setMarkingUpToDateAccount(undefined);
+        }}
+        onSave={handleUpToDateSave}
+        account={markingUpToDateAccount}
+      />
+
       <ConfirmDialog
         open={deletingAccount != null}
         onOpenChange={(open) => {
@@ -517,7 +579,7 @@ function accountMatchesSearch(
   if (searchTokens.length === 0) return true;
 
   const searchableValue = normalizeAccountSearchValue(
-    `${account.name} ${account.currency}`,
+    `${account.name} ${account.currency} ${account.comment ?? ""}`,
   );
   return searchTokens.every((token) => searchableValue.includes(token));
 }
@@ -527,8 +589,14 @@ function accountHidesBalanceByDefault(account: Account): boolean {
 }
 
 function accountUpdateStatus(
-  latestUpdate: Date | undefined,
+  latestTransactionUpdate: Date | undefined,
+  markedUpToDateAt: string | undefined,
 ): AccountUpdateStatus {
+  const latestUpdate = selectLatestAccountUpdate(
+    latestTransactionUpdate,
+    markedUpToDateAt,
+  );
+
   if (latestUpdate == null) {
     return {
       tone: "quiet",
@@ -540,15 +608,22 @@ function accountUpdateStatus(
 
   const daysSinceUpdate = Math.max(
     0,
-    differenceInCalendarDays(new Date(), latestUpdate),
+    differenceInCalendarDays(new Date(), latestUpdate.date),
   );
-  const updateDate = format(latestUpdate, "MMM d, yyyy");
+  const updateDate = format(latestUpdate.date, "MMM d, yyyy");
+  const isManual = latestUpdate.source === "manual";
+  const title = isManual
+    ? `Marked up to date: ${updateDate}.`
+    : `Last transaction update: ${updateDate}.`;
 
   if (daysSinceUpdate <= FRESH_UPDATE_DAYS) {
     return {
       tone: "fresh",
-      label: relativeUpdateLabel(daysSinceUpdate),
-      title: `Last transaction update: ${updateDate}.`,
+      source: latestUpdate.source,
+      label: isManual
+        ? relativeManualUpdateLabel(daysSinceUpdate)
+        : relativeTransactionUpdateLabel(daysSinceUpdate),
+      title,
       Icon: CheckCircle2,
     };
   }
@@ -556,22 +631,58 @@ function accountUpdateStatus(
   if (daysSinceUpdate <= AGING_UPDATE_DAYS) {
     return {
       tone: "aging",
-      label: `No updates for ${daysSinceUpdate} days`,
-      title: `Last transaction update: ${updateDate}.`,
+      source: latestUpdate.source,
+      label: isManual
+        ? `Confirmed ${daysSinceUpdate} days ago`
+        : `No updates for ${daysSinceUpdate} days`,
+      title,
       Icon: Clock3,
     };
   }
 
   return {
     tone: "quiet",
-    label: `Quiet since ${format(latestUpdate, "MMM d")}`,
-    title: `Last transaction update: ${updateDate}.`,
+    source: latestUpdate.source,
+    label: isManual
+      ? `Checked on ${format(latestUpdate.date, "MMM d")}`
+      : `Quiet since ${format(latestUpdate.date, "MMM d")}`,
+    title,
     Icon: CircleMinus,
   };
 }
 
-function relativeUpdateLabel(daysSinceUpdate: number): string {
+function selectLatestAccountUpdate(
+  latestTransactionUpdate: Date | undefined,
+  markedUpToDateAt: string | undefined,
+): AccountUpdate | undefined {
+  const manualUpdate = parseOptionalDate(markedUpToDateAt);
+  if (latestTransactionUpdate == null) {
+    return manualUpdate == null
+      ? undefined
+      : { date: manualUpdate, source: "manual" };
+  }
+
+  if (manualUpdate != null && manualUpdate >= latestTransactionUpdate) {
+    return { date: manualUpdate, source: "manual" };
+  }
+
+  return { date: latestTransactionUpdate, source: "transaction" };
+}
+
+function parseOptionalDate(value: string | undefined): Date | undefined {
+  if (value == null) return undefined;
+  const date = parseISO(value);
+  return isValid(date) ? date : undefined;
+}
+
+function relativeTransactionUpdateLabel(daysSinceUpdate: number): string {
   if (daysSinceUpdate === 0) return "Updated today";
   if (daysSinceUpdate === 1) return "Updated yesterday";
   return `Updated ${daysSinceUpdate} days ago`;
+}
+
+function relativeManualUpdateLabel(daysSinceUpdate: number): string {
+  if (daysSinceUpdate === 0) return "Confirmed today";
+  if (daysSinceUpdate === 1) return "Confirmed yesterday";
+  return `Confirmed ${daysSinceUpdate} days ago`;
 }

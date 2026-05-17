@@ -1,5 +1,6 @@
 import { useState, useEffect, type KeyboardEvent } from "react";
 import type { Account } from "../types";
+import { cleanAccountComment } from "../types";
 import {
   Dialog,
   DialogContent,
@@ -11,12 +12,14 @@ import {
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
+import { Textarea } from "./ui/textarea";
 import { DiscardChangesDialog } from "./DiscardChangesDialog";
 import { focusNextInForm } from "@/lib/utils";
 
 export interface AccountFormValues {
   name: string;
   currency: string;
+  comment?: string;
   hideBalanceByDefault: boolean;
 }
 
@@ -35,9 +38,11 @@ export function AccountForm({
 }: AccountFormProps) {
   const [name, setName] = useState("");
   const [currency, setCurrency] = useState("");
+  const [comment, setComment] = useState("");
   const [hideBalanceByDefault, setHideBalanceByDefault] = useState(false);
   const [initialName, setInitialName] = useState("");
   const [initialCurrency, setInitialCurrency] = useState("");
+  const [initialComment, setInitialComment] = useState("");
   const [initialHideBalanceByDefault, setInitialHideBalanceByDefault] =
     useState(false);
   const [discardDialogOpen, setDiscardDialogOpen] = useState(false);
@@ -46,12 +51,15 @@ export function AccountForm({
     if (open) {
       const nextName = account?.name ?? "";
       const nextCurrency = account?.currency ?? "";
+      const nextComment = account?.comment ?? "";
       const nextHideBalanceByDefault = account?.hideBalanceByDefault === true;
       setName(nextName);
       setCurrency(nextCurrency);
+      setComment(nextComment);
       setHideBalanceByDefault(nextHideBalanceByDefault);
       setInitialName(nextName);
       setInitialCurrency(nextCurrency);
+      setInitialComment(nextComment);
       setInitialHideBalanceByDefault(nextHideBalanceByDefault);
       setDiscardDialogOpen(false);
     }
@@ -63,6 +71,7 @@ export function AccountForm({
     open &&
     (name !== initialName ||
       currency !== initialCurrency ||
+      comment !== initialComment ||
       hideBalanceByDefault !== initialHideBalanceByDefault);
 
   function closeWithoutPrompt() {
@@ -90,6 +99,7 @@ export function AccountForm({
     onSave({
       name: name.trim(),
       currency: currency.trim().toUpperCase(),
+      comment: cleanAccountComment(comment) || undefined,
       hideBalanceByDefault,
     });
     closeWithoutPrompt();
@@ -142,6 +152,18 @@ export function AccountForm({
                 autoCorrect="off"
                 spellCheck={false}
                 onChange={(e) => setCurrency(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="account-comment">Comment</Label>
+              <Textarea
+                id="account-comment"
+                placeholder="e.g. Money owed for groceries and ubers"
+                value={comment}
+                maxLength={220}
+                rows={3}
+                autoComplete="off"
+                onChange={(e) => setComment(e.target.value)}
               />
             </div>
             <label

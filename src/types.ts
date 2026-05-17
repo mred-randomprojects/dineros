@@ -11,7 +11,9 @@ export interface Account {
   id: AccountId;
   name: string;
   currency: string;
+  comment?: string;
   hideBalanceByDefault?: boolean;
+  markedUpToDateAt?: string;
   createdAt: string;
 }
 
@@ -71,6 +73,10 @@ export interface AppData {
 
 export function cleanCategoryName(name: string | null | undefined): string {
   return name?.trim().replace(/\s+/g, " ") ?? "";
+}
+
+export function cleanAccountComment(comment: string | null | undefined): string {
+  return comment?.trim().replace(/\s+/g, " ") ?? "";
 }
 
 export function normalizeCategoryLookupKey(
@@ -160,12 +166,16 @@ function normalizeAccount(raw: unknown): Account | null {
   const currency = stringValue(raw.currency);
   if (id == null || name == null || currency == null) return null;
 
+  const comment = cleanAccountComment(stringValue(raw.comment));
+
   return {
     id: id as AccountId,
     name,
     currency,
+    comment: comment.length > 0 ? comment : undefined,
     hideBalanceByDefault:
       booleanValue(raw.hideBalanceByDefault) === true ? true : undefined,
+    markedUpToDateAt: stringValue(raw.markedUpToDateAt) ?? undefined,
     createdAt: stringValue(raw.createdAt) ?? new Date().toISOString(),
   };
 }
