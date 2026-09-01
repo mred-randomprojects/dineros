@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from "react-router-dom";
-import { Wallet, ArrowLeftRight, Tags } from "lucide-react";
+import { Wallet, ArrowLeftRight, Repeat, Tags } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
@@ -10,7 +10,8 @@ const NAV_ITEMS = [
     shortcut: "2",
     icon: ArrowLeftRight,
   },
-  { path: "/categories", label: "Categories", shortcut: "3", icon: Tags },
+  { path: "/recurring", label: "Recurring", shortcut: "3", icon: Repeat },
+  { path: "/categories", label: "Categories", shortcut: "4", icon: Tags },
 ] as const;
 
 export function NavBar() {

@@ -7,6 +7,7 @@ import { NavBar } from "./components/NavBar";
 import { Accounts } from "./components/Accounts";
 import { Categories } from "./components/Categories";
 import { Transactions } from "./components/Transactions";
+import { Recurring } from "./components/Recurring";
 import { LoginPage } from "./components/LoginPage";
 
 export default function App() {
@@ -64,6 +65,9 @@ function AuthenticatedApp() {
         navigate("/transactions");
       } else if (e.key === "3") {
         e.preventDefault();
+        navigate("/recurring");
+      } else if (e.key === "4") {
+        e.preventDefault();
         navigate("/categories");
       }
     }
@@ -82,6 +86,7 @@ function AuthenticatedApp() {
           path="/transactions"
           element={<Transactions appData={appData} />}
         />
+        <Route path="/recurring" element={<Recurring appData={appData} />} />
       </Routes>
 
       {appData.storageError != null && (

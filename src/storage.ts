@@ -33,9 +33,11 @@ const DEFAULT_APP_DATA: AppData = {
   accounts: [],
   categories: [],
   transactions: [],
+  recurringExpenses: [],
   deletedAccounts: [],
   deletedCategories: [],
   deletedTransactions: [],
+  deletedRecurringExpenses: [],
 };
 
 export function loadAppData(): AppData {

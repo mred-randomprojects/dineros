@@ -4,6 +4,8 @@ import type {
   AccountId,
   Category,
   CategoryId,
+  RecurringExpense,
+  RecurringExpenseId,
   Transaction,
   TransactionId,
 } from "./types";
@@ -12,9 +14,11 @@ import {
   buildDeletedAccountSet,
   buildDeletedCategoryNameSet,
   buildDeletedCategorySet,
+  buildDeletedRecurringExpenseSet,
   buildDeletedTransactionSet,
   mergeDeletedAccounts,
   mergeDeletedCategories,
+  mergeDeletedRecurringExpenses,
   mergeDeletedTransactions,
 } from "./deletedEntries";
 
@@ -48,10 +52,17 @@ export function mergeAppData(
     local.deletedCategories ?? [],
     cloud.deletedCategories ?? [],
   );
+  const deletedRecurringExpenses = mergeDeletedRecurringExpenses(
+    local.deletedRecurringExpenses ?? [],
+    cloud.deletedRecurringExpenses ?? [],
+  );
   const deletedAccountSet = buildDeletedAccountSet(deletedAccounts);
   const deletedCategorySet = buildDeletedCategorySet(deletedCategories);
   const deletedTransactionSet =
     buildDeletedTransactionSet(deletedTransactions);
+  const deletedRecurringExpenseSet = buildDeletedRecurringExpenseSet(
+    deletedRecurringExpenses,
+  );
   const categories = mergeCategories(
     local.categories,
     cloud.categories,
@@ -83,10 +94,50 @@ export function mergeAppData(
       deletedTransactionSet,
       conflictWinner,
     ),
+    recurringExpenses: mergeRecurringExpenses(
+      local.recurringExpenses ?? [],
+      cloud.recurringExpenses ?? [],
+      deletedRecurringExpenseSet,
+      deletedAccountSet,
+      conflictWinner,
+    ),
     deletedAccounts,
     deletedCategories,
     deletedTransactions,
+    deletedRecurringExpenses,
   };
+}
+
+function mergeRecurringExpenses(
+  localExpenses: ReadonlyArray<RecurringExpense>,
+  cloudExpenses: ReadonlyArray<RecurringExpense>,
+  deletedRecurringExpenseSet: ReadonlySet<RecurringExpenseId>,
+  deletedAccountSet: ReadonlySet<AccountId>,
+  conflictWinner: ConflictWinner,
+): RecurringExpense[] {
+  const [preferred, fallback] = sourcesByWinner(
+    localExpenses,
+    cloudExpenses,
+    conflictWinner,
+  );
+  const clearDangling = (expense: RecurringExpense): RecurringExpense =>
+    expense.accountId != null && deletedAccountSet.has(expense.accountId)
+      ? { ...expense, accountId: null }
+      : expense;
+  const livePreferred = preferred
+    .filter((expense) => !deletedRecurringExpenseSet.has(expense.id))
+    .map(clearDangling);
+  const preferredIds = new Set<RecurringExpenseId>(
+    livePreferred.map((expense) => expense.id),
+  );
+  const fallbackOnly = fallback
+    .filter(
+      (expense) =>
+        !preferredIds.has(expense.id) &&
+        !deletedRecurringExpenseSet.has(expense.id),
+    )
+    .map(clearDangling);
+  return [...livePreferred, ...fallbackOnly];
 }
 
 function sourcesByWinner<T>(

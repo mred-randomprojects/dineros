@@ -4,7 +4,9 @@ import type {
   CategoryId,
   DeletedAccount,
   DeletedCategory,
+  DeletedRecurringExpense,
   DeletedTransaction,
+  RecurringExpenseId,
   TransactionId,
 } from "./types";
 import { normalizeCategoryLookupKey } from "./types";
@@ -25,6 +27,14 @@ export function buildDeletedCategorySet(
   deletedCategories: ReadonlyArray<DeletedCategory>,
 ): Set<CategoryId> {
   return new Set(deletedCategories.map((entry) => entry.categoryId));
+}
+
+export function buildDeletedRecurringExpenseSet(
+  deletedRecurringExpenses: ReadonlyArray<DeletedRecurringExpense>,
+): Set<RecurringExpenseId> {
+  return new Set(
+    deletedRecurringExpenses.map((entry) => entry.recurringExpenseId),
+  );
 }
 
 export function buildDeletedCategoryNameSet(
@@ -97,6 +107,25 @@ export function mergeDeletedCategories(
   return [...byId.values()];
 }
 
+export function mergeDeletedRecurringExpenses(
+  localDeletedRecurringExpenses: ReadonlyArray<DeletedRecurringExpense>,
+  cloudDeletedRecurringExpenses: ReadonlyArray<DeletedRecurringExpense>,
+): DeletedRecurringExpense[] {
+  const byId = new Map<RecurringExpenseId, DeletedRecurringExpense>();
+
+  for (const entry of [
+    ...localDeletedRecurringExpenses,
+    ...cloudDeletedRecurringExpenses,
+  ]) {
+    const existing = byId.get(entry.recurringExpenseId);
+    if (existing == null || entry.deletedAt > existing.deletedAt) {
+      byId.set(entry.recurringExpenseId, entry);
+    }
+  }
+
+  return [...byId.values()];
+}
+
 export function upsertDeletedAccount(
   deletedAccounts: ReadonlyArray<DeletedAccount>,
   deletedAccount: DeletedAccount,
@@ -133,16 +162,34 @@ export function upsertDeletedCategory(
   ];
 }
 
+export function upsertDeletedRecurringExpense(
+  deletedRecurringExpenses: ReadonlyArray<DeletedRecurringExpense>,
+  deletedRecurringExpense: DeletedRecurringExpense,
+): DeletedRecurringExpense[] {
+  return [
+    ...deletedRecurringExpenses.filter(
+      (entry) =>
+        entry.recurringExpenseId !==
+        deletedRecurringExpense.recurringExpenseId,
+    ),
+    deletedRecurringExpense,
+  ];
+}
+
 export function filterDeletedEntriesFromAppData(
   data: AppData,
   deletedAccounts: ReadonlyArray<DeletedAccount>,
   deletedCategories: ReadonlyArray<DeletedCategory>,
   deletedTransactions: ReadonlyArray<DeletedTransaction>,
+  deletedRecurringExpenses: ReadonlyArray<DeletedRecurringExpense>,
 ): AppData {
   const deletedAccountSet = buildDeletedAccountSet(deletedAccounts);
   const deletedCategorySet = buildDeletedCategorySet(deletedCategories);
   const deletedTransactionSet =
     buildDeletedTransactionSet(deletedTransactions);
+  const deletedRecurringExpenseSet = buildDeletedRecurringExpenseSet(
+    deletedRecurringExpenses,
+  );
   const categories = data.categories.filter(
     (category) => !deletedCategorySet.has(category.id),
   );
@@ -160,10 +207,18 @@ export function filterDeletedEntriesFromAppData(
     deletedAccounts: [...deletedAccounts],
     deletedCategories: [...deletedCategories],
     deletedTransactions: [...deletedTransactions],
+    deletedRecurringExpenses: [...deletedRecurringExpenses],
     accounts: data.accounts.filter(
       (account) => !deletedAccountSet.has(account.id),
     ),
     categories,
+    recurringExpenses: data.recurringExpenses
+      .filter((entry) => !deletedRecurringExpenseSet.has(entry.id))
+      .map((entry) =>
+        entry.accountId != null && deletedAccountSet.has(entry.accountId)
+          ? { ...entry, accountId: null }
+          : entry,
+      ),
     transactions: data.transactions
       .filter(
         (transaction) =>

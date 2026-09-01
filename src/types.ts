@@ -1,6 +1,9 @@
 export type AccountId = string & { readonly __brand: "AccountId" };
 export type TransactionId = string & { readonly __brand: "TransactionId" };
 export type CategoryId = string & { readonly __brand: "CategoryId" };
+export type RecurringExpenseId = string & {
+  readonly __brand: "RecurringExpenseId";
+};
 export type TransactionKind = "balance_adjustment";
 
 export function generateId(): string {
@@ -23,6 +26,45 @@ export interface Category {
   createdAt: string;
 }
 
+/**
+ * When a recurrence stops offering itself. "never" runs indefinitely;
+ * "on" discontinues after the given date (occurrences due after it disappear).
+ */
+export type RecurrenceEnds =
+  | { kind: "never" }
+  | { kind: "on"; date: string };
+
+/**
+ * A calendar recurrence, constrained to cadences that yield at most one
+ * occurrence per month so each cell of the year grid maps to a single dot.
+ * `anchor` (a "YYYY-MM-DD" date) is both the first active month and the
+ * day-of-month the charge lands on. Monthly = every N months; yearly
+ * behaves like every 12 months from the anchor month.
+ */
+export interface RecurrenceRule {
+  freq: "month" | "year";
+  interval: number; // "every N" — always >= 1
+  anchor: string; // "YYYY-MM-DD"
+  ends: RecurrenceEnds;
+}
+
+export interface RecurringExpense {
+  id: RecurringExpenseId;
+  name: string;
+  description?: string;
+  category?: string;
+  accountId: AccountId | null;
+  estimatedAmount: number | null;
+  currency: string;
+  rule: RecurrenceRule;
+  createdAt: string;
+}
+
+export interface DeletedRecurringExpense {
+  recurringExpenseId: RecurringExpenseId;
+  deletedAt: string;
+}
+
 export interface BalanceAdjustmentDetails {
   accountId: AccountId;
   previousBalance: number;
@@ -42,6 +84,10 @@ export interface Transaction {
   category?: string;
   isExpected?: boolean;
   balanceAdjustment?: BalanceAdjustmentDetails;
+  /** Set when this transaction fulfills a recurring expense occurrence. */
+  recurringExpenseId?: RecurringExpenseId;
+  /** The occurrence this payment settles, as a "YYYY-MM" month key. */
+  period?: string;
   description: string;
   createdAt: string;
 }
@@ -66,9 +112,11 @@ export interface AppData {
   accounts: Account[];
   categories: Category[];
   transactions: Transaction[];
+  recurringExpenses: RecurringExpense[];
   deletedAccounts: DeletedAccount[];
   deletedCategories: DeletedCategory[];
   deletedTransactions: DeletedTransaction[];
+  deletedRecurringExpenses: DeletedRecurringExpense[];
 }
 
 export function cleanCategoryName(name: string | null | undefined): string {
@@ -257,6 +305,11 @@ function normalizeTransaction(
     category: category.length > 0 ? category : undefined,
     isExpected: booleanValue(raw.isExpected) === true ? true : undefined,
     balanceAdjustment,
+    recurringExpenseId:
+      stringValue(raw.recurringExpenseId) == null
+        ? undefined
+        : (stringValue(raw.recurringExpenseId) as RecurringExpenseId),
+    period: stringValue(raw.period) ?? undefined,
     description,
     createdAt,
   };
@@ -305,6 +358,86 @@ function normalizeDeletedCategory(raw: unknown): DeletedCategory | null {
   };
 }
 
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function isoDateValue(value: unknown): string | null {
+  return typeof value === "string" && ISO_DATE_RE.test(value) ? value : null;
+}
+
+function normalizeRecurrenceEnds(raw: unknown): RecurrenceEnds {
+  if (isRecord(raw) && raw.kind === "on") {
+    const date = isoDateValue(raw.date);
+    if (date != null) return { kind: "on", date };
+  }
+  return { kind: "never" };
+}
+
+function normalizeRecurrenceRule(raw: unknown): RecurrenceRule | null {
+  if (!isRecord(raw)) return null;
+
+  const anchor = isoDateValue(raw.anchor);
+  if (anchor == null) return null;
+
+  const freq = raw.freq === "year" ? "year" : "month";
+  const rawInterval = numberValue(raw.interval);
+  const interval =
+    rawInterval == null || rawInterval < 1 ? 1 : Math.floor(rawInterval);
+
+  return {
+    freq,
+    interval,
+    anchor,
+    ends: normalizeRecurrenceEnds(raw.ends),
+  };
+}
+
+function normalizeRecurringExpense(raw: unknown): RecurringExpense | null {
+  if (!isRecord(raw)) return null;
+
+  const id = stringValue(raw.id);
+  const name = stringValue(raw.name)?.trim();
+  const currency = stringValue(raw.currency);
+  const rule = normalizeRecurrenceRule(raw.rule);
+  if (id == null || name == null || name.length === 0 || currency == null) {
+    return null;
+  }
+  if (rule == null) return null;
+
+  const description = stringValue(raw.description)?.trim();
+  const category = cleanCategoryName(stringValue(raw.category));
+  const accountId = stringValue(raw.accountId);
+  const estimatedAmount = numberValue(raw.estimatedAmount);
+
+  return {
+    id: id as RecurringExpenseId,
+    name,
+    description:
+      description != null && description.length > 0 ? description : undefined,
+    category: category.length > 0 ? category : undefined,
+    accountId: accountId == null ? null : (accountId as AccountId),
+    estimatedAmount:
+      estimatedAmount == null ? null : Math.abs(estimatedAmount),
+    currency,
+    rule,
+    createdAt: stringValue(raw.createdAt) ?? new Date().toISOString(),
+  };
+}
+
+function normalizeDeletedRecurringExpense(
+  raw: unknown,
+): DeletedRecurringExpense | null {
+  if (!isRecord(raw)) return null;
+
+  const recurringExpenseId = stringValue(raw.recurringExpenseId);
+  const deletedAt = stringValue(raw.deletedAt);
+  if (recurringExpenseId == null || deletedAt == null) return null;
+
+  return {
+    recurringExpenseId: recurringExpenseId as RecurringExpenseId,
+    deletedAt,
+  };
+}
+
 function uniqueCategories(categories: ReadonlyArray<Category>): Category[] {
   const byName = new Map<string, Category>();
   for (const category of categories) {
@@ -338,9 +471,11 @@ export function normalizeAppData(raw: unknown): AppData {
       accounts: [],
       categories: [],
       transactions: [],
+      recurringExpenses: [],
       deletedAccounts: [],
       deletedCategories: [],
       deletedTransactions: [],
+      deletedRecurringExpenses: [],
     };
   }
 
@@ -359,6 +494,14 @@ export function normalizeAppData(raw: unknown): AppData {
         .map(normalizeDeletedCategory)
         .filter((category): category is DeletedCategory => category != null)
     : [];
+  const deletedRecurringExpenses = Array.isArray(raw.deletedRecurringExpenses)
+    ? raw.deletedRecurringExpenses
+        .map(normalizeDeletedRecurringExpense)
+        .filter((entry): entry is DeletedRecurringExpense => entry != null)
+    : [];
+  const deletedRecurringExpenseIds = new Set<RecurringExpenseId>(
+    deletedRecurringExpenses.map((entry) => entry.recurringExpenseId),
+  );
   const deletedAccountIds = new Set<AccountId>(
     deletedAccounts.map((entry) => entry.accountId),
   );
@@ -418,12 +561,29 @@ export function normalizeAppData(raw: unknown): AppData {
     ? liveCategories
     : deriveCategoriesFromTransactions(liveTransactions);
 
+  const recurringExpenses = (
+    Array.isArray(raw.recurringExpenses)
+      ? raw.recurringExpenses
+          .map(normalizeRecurringExpense)
+          .filter((entry): entry is RecurringExpense => entry != null)
+      : []
+  )
+    .filter((entry) => !deletedRecurringExpenseIds.has(entry.id))
+    .map((entry) =>
+      // Drop dangling references to accounts that have been deleted.
+      entry.accountId != null && deletedAccountIds.has(entry.accountId)
+        ? { ...entry, accountId: null }
+        : entry,
+    );
+
   return {
     accounts: accounts.filter((account) => !deletedAccountIds.has(account.id)),
     categories: normalizedCategories,
     transactions: liveTransactions,
+    recurringExpenses,
     deletedAccounts,
     deletedCategories,
     deletedTransactions,
+    deletedRecurringExpenses,
   };
 }

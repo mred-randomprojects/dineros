@@ -6,6 +6,7 @@ import {
   filterDeletedEntriesFromAppData,
   mergeDeletedAccounts,
   mergeDeletedCategories,
+  mergeDeletedRecurringExpenses,
   mergeDeletedTransactions,
 } from "./deletedEntries";
 import { mergeAppData } from "./mergeAppData";
@@ -35,9 +36,11 @@ function payloadFromAppData(data: AppData): Record<string, unknown> {
     accounts: data.accounts,
     categories: data.categories,
     transactions: data.transactions,
+    recurringExpenses: data.recurringExpenses,
     deletedAccounts: data.deletedAccounts,
     deletedCategories: data.deletedCategories,
     deletedTransactions: data.deletedTransactions,
+    deletedRecurringExpenses: data.deletedRecurringExpenses,
   }) as Record<string, unknown>;
 }
 
@@ -71,6 +74,10 @@ export async function saveCloudData(
       data.deletedCategories ?? [],
       cloudData?.deletedCategories ?? [],
     );
+    const deletedRecurringExpenses = mergeDeletedRecurringExpenses(
+      data.deletedRecurringExpenses ?? [],
+      cloudData?.deletedRecurringExpenses ?? [],
+    );
     const mergedData =
       cloudData == null
         ? {
@@ -78,6 +85,7 @@ export async function saveCloudData(
             deletedAccounts,
             deletedCategories,
             deletedTransactions,
+            deletedRecurringExpenses,
           }
         : mergeAppData(
             {
@@ -85,12 +93,14 @@ export async function saveCloudData(
               deletedAccounts,
               deletedCategories,
               deletedTransactions,
+              deletedRecurringExpenses,
             },
             {
               ...cloudData,
               deletedAccounts,
               deletedCategories,
               deletedTransactions,
+              deletedRecurringExpenses,
             },
             { conflictWinner: "local" },
           );
@@ -99,6 +109,7 @@ export async function saveCloudData(
       deletedAccounts,
       deletedCategories,
       deletedTransactions,
+      deletedRecurringExpenses,
     );
 
     transaction.set(ref, payloadFromAppData(filteredData));

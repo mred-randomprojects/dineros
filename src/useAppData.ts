@@ -5,6 +5,8 @@ import type {
   AccountId,
   Category,
   CategoryId,
+  RecurringExpense,
+  RecurringExpenseId,
   Transaction,
   TransactionId,
 } from "./types";
@@ -22,6 +24,7 @@ import type { ParsedCsvTransaction } from "./importTransactionsCsv";
 import {
   upsertDeletedAccount,
   upsertDeletedCategory,
+  upsertDeletedRecurringExpense,
   upsertDeletedTransaction,
 } from "./deletedEntries";
 import {
@@ -39,6 +42,15 @@ export interface ImportTransactionsResult {
 export interface AddBalanceAdjustmentInput {
   accountId: AccountId;
   targetBalance: number;
+  date: string;
+  description?: string;
+}
+
+export interface MarkRecurringExpensePaidInput {
+  recurringExpense: RecurringExpense;
+  period: string;
+  amount: number;
+  accountId: AccountId;
   date: string;
   description?: string;
 }
@@ -273,6 +285,11 @@ export function useAppData() {
           (tx) =>
             tx.fromAccountId !== accountId && tx.toAccountId !== accountId,
         ),
+        recurringExpenses: data.recurringExpenses.map((expense) =>
+          expense.accountId === accountId
+            ? { ...expense, accountId: null }
+            : expense,
+        ),
       });
     },
     [data, persist],
@@ -480,6 +497,149 @@ export function useAppData() {
     [data, persist],
   );
 
+  // --- Recurring expense CRUD ---
+
+  const addRecurringExpense = useCallback(
+    (input: Omit<RecurringExpense, "id" | "createdAt">) => {
+      const createdAt = new Date().toISOString();
+      const newExpense: RecurringExpense = {
+        ...input,
+        category: cleanCategoryName(input.category) || undefined,
+        id: generateId() as RecurringExpenseId,
+        createdAt,
+      };
+      const categories = appendMissingCategories(
+        data.categories,
+        [newExpense.category],
+        createdAt,
+      );
+      persist({
+        ...data,
+        categories,
+        recurringExpenses: [...data.recurringExpenses, newExpense],
+      });
+      return newExpense;
+    },
+    [data, persist],
+  );
+
+  const updateRecurringExpense = useCallback(
+    (
+      recurringExpenseId: RecurringExpenseId,
+      updates: Partial<Omit<RecurringExpense, "id" | "createdAt">>,
+    ) => {
+      const hasCategoryUpdate = "category" in updates;
+      const cleanUpdates = hasCategoryUpdate
+        ? {
+            ...updates,
+            category: cleanCategoryName(updates.category) || undefined,
+          }
+        : updates;
+      const categories = appendMissingCategories(
+        data.categories,
+        hasCategoryUpdate ? [cleanUpdates.category] : [],
+        new Date().toISOString(),
+      );
+      persist({
+        ...data,
+        categories,
+        recurringExpenses: data.recurringExpenses.map((expense) =>
+          expense.id === recurringExpenseId
+            ? { ...expense, ...cleanUpdates }
+            : expense,
+        ),
+      });
+    },
+    [data, persist],
+  );
+
+  const deleteRecurringExpense = useCallback(
+    (recurringExpenseId: RecurringExpenseId) => {
+      const deletedAt = new Date().toISOString();
+      persist({
+        ...data,
+        deletedRecurringExpenses: upsertDeletedRecurringExpense(
+          data.deletedRecurringExpenses ?? [],
+          { recurringExpenseId, deletedAt },
+        ),
+        recurringExpenses: data.recurringExpenses.filter(
+          (expense) => expense.id !== recurringExpenseId,
+        ),
+      });
+    },
+    [data, persist],
+  );
+
+  const markRecurringExpensePaid = useCallback(
+    (input: MarkRecurringExpensePaidInput) => {
+      const { recurringExpense, period, amount, accountId, date } = input;
+      const account = data.accounts.find((a) => a.id === accountId);
+      const currency = account?.currency ?? recurringExpense.currency;
+      const description =
+        input.description?.trim() && input.description.trim().length > 0
+          ? input.description.trim()
+          : recurringExpense.name;
+      const createdAt = new Date().toISOString();
+
+      const newTransaction: Transaction = {
+        id: generateId() as TransactionId,
+        date,
+        fromAccountId: accountId,
+        toAccountId: null,
+        fromAmount: Math.abs(amount),
+        toAmount: null,
+        fromCurrency: currency,
+        toCurrency: null,
+        category: cleanCategoryName(recurringExpense.category) || undefined,
+        recurringExpenseId: recurringExpense.id,
+        period,
+        description,
+        createdAt,
+      };
+
+      const categories = appendMissingCategories(
+        data.categories,
+        [newTransaction.category],
+        createdAt,
+      );
+      persist({
+        ...data,
+        categories,
+        transactions: [...data.transactions, newTransaction],
+      });
+      return newTransaction;
+    },
+    [data, persist],
+  );
+
+  const unmarkRecurringExpensePaid = useCallback(
+    (recurringExpenseId: RecurringExpenseId, period: string) => {
+      const deletedAt = new Date().toISOString();
+      const toRemove = data.transactions.filter(
+        (tx) =>
+          tx.recurringExpenseId === recurringExpenseId && tx.period === period,
+      );
+      if (toRemove.length === 0) return;
+
+      const deletedTransactions = toRemove.reduce(
+        (entries, tx) =>
+          upsertDeletedTransaction(entries, {
+            transactionId: tx.id,
+            deletedAt,
+          }),
+        data.deletedTransactions ?? [],
+      );
+      const removedIds = new Set(toRemove.map((tx) => tx.id));
+
+      persist({
+        ...data,
+        deletedTransactions,
+        transactions: data.transactions.filter((tx) => !removedIds.has(tx.id)),
+      });
+    },
+    [data, persist],
+  );
+
   const importTransactions = useCallback(
     (
       rows: ReadonlyArray<ParsedCsvTransaction>,
@@ -604,6 +764,11 @@ export function useAppData() {
     deleteTransaction,
     importTransactions,
     addBalanceAdjustment,
+    addRecurringExpense,
+    updateRecurringExpense,
+    deleteRecurringExpense,
+    markRecurringExpensePaid,
+    unmarkRecurringExpensePaid,
     setStorageError,
   };
 }
