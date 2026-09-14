@@ -1,4 +1,6 @@
 import { useEffect } from "react";
+import { interceptSave } from "cmd-s";
+import { submitClosestForm } from "./formSubmit";
 import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import { Loader2, CloudUpload } from "lucide-react";
 import { useAppData } from "./useAppData";
@@ -75,6 +77,24 @@ function AuthenticatedApp() {
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [navigate]);
+
+  // ⌘S / Ctrl+S, instead of the browser's "Save page" dialog. Inside a form it
+  // submits that form; anywhere else there is nothing left to write — every
+  // change already wrote itself — so it only confirms, or repeats the storage
+  // error if the last write did not land. Top of the screen: the nav bar owns
+  // the bottom.
+  const { storageError } = appData;
+  useEffect(
+    () =>
+      interceptSave({
+        position: "top",
+        onSave: () => {
+          if (submitClosestForm(document.activeElement)) return;
+          return storageError ?? "Saved";
+        },
+      }),
+    [storageError],
+  );
 
   return (
     <div className="mx-auto min-h-dvh max-w-lg pb-[calc(5.5rem+env(safe-area-inset-bottom))]">
