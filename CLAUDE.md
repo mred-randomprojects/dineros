@@ -28,7 +28,8 @@ Run them under Node 22 (`.nvmrc`; `nvm use`). `npm run check` is the gate CI
 runs before every deploy:
 
 ```bash
-npm run check            # tsc -b && typecheck:cli && eslint .
+npm run check            # tsc -b && typecheck:cli && eslint . && npm test
+npm test                 # vitest: merge, normalizers, recurrence, CSV import
 npm run build            # tsc -b && vite build
 npm run typecheck:cli    # the CLI is not part of the app's tsc project
 npm run lint
