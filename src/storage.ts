@@ -5,11 +5,59 @@ const STORAGE_KEY = "dineros-data";
 const BACKUP_KEY = "dineros-data-backup";
 const CORRUPT_RECOVERY_KEY = "dineros-data-corrupt-recovery";
 
+export function isQuotaError(e: unknown): boolean {
+  return (
+    e instanceof DOMException &&
+    (e.name === "QuotaExceededError" ||
+      e.name === "NS_ERROR_DOM_QUOTA_REACHED" ||
+      e.code === 22)
+  );
+}
+
+/**
+ * This app's bytes vs. everybody else's on the shared origin (UTF-16, so
+ * chars × 2). Reads lengths only.
+ */
+export function storageUsage(isMine: (key: string) => boolean): {
+  mine: number;
+  others: number;
+} {
+  let mine = 0;
+  let others = 0;
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key === null) continue;
+      const bytes = (key.length + (localStorage.getItem(key)?.length ?? 0)) * 2;
+      if (isMine(key)) mine += bytes;
+      else others += bytes;
+    }
+  } catch {
+    /* storage blocked */
+  }
+  return { mine, others };
+}
+
+export function isDinerosKey(key: string): boolean {
+  return key.startsWith("dineros-");
+}
+
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/**
+ * The bytes that filled the shared quota may be another app's, so the
+ * message says who uses what instead of telling the user to delete records.
+ */
+export function quotaMessage(usage: { mine: number; others: number }): string {
+  return `This browser is out of space for this site. All apps on mred-randomprojects.github.io share about 5 MB: this one uses ${formatBytes(usage.mine)}, the others ${formatBytes(usage.others)}.`;
+}
+
 export class StorageQuotaError extends Error {
-  constructor() {
-    super(
-      "localStorage is full — no space left to save your data. Consider deleting old transactions.",
-    );
+  constructor(message: string = quotaMessage(storageUsage(isDinerosKey))) {
+    super(message);
     this.name = "StorageQuotaError";
   }
 }
@@ -18,11 +66,7 @@ function safeSetItem(key: string, value: string): void {
   try {
     localStorage.setItem(key, value);
   } catch (e: unknown) {
-    if (
-      e instanceof DOMException &&
-      (e.name === "QuotaExceededError" ||
-        e.name === "NS_ERROR_DOM_QUOTA_REACHED")
-    ) {
+    if (isQuotaError(e)) {
       throw new StorageQuotaError();
     }
     throw e;
@@ -76,15 +120,4 @@ export function saveAppData(data: AppData): void {
     }
   }
   safeSetItem(STORAGE_KEY, JSON.stringify(data));
-}
-
-export function getStorageUsage(): { usedBytes: number; quotaBytes: number } {
-  let usedBytes = 0;
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
-    if (key == null) continue;
-    usedBytes += (key.length + (localStorage.getItem(key)?.length ?? 0)) * 2;
-  }
-  const quotaBytes = 5 * 1024 * 1024;
-  return { usedBytes, quotaBytes };
 }
