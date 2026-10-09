@@ -23,3 +23,5 @@ service-account*.json
 
 # Snapshots from `./dineros export`: personal financial data, never committed
 exports/
+# ...and the same snapshots wherever `export --out` put them inside the repo
+dineros-[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]*.json
