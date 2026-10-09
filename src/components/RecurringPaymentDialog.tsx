@@ -37,7 +37,8 @@ interface RecurringPaymentDialogProps {
   dueDate: string;
   accounts: ReadonlyArray<Account>;
   payment: PaymentRecord | null;
-  onConfirm: (values: RecurringPaymentValues) => void;
+  /** False when nothing was recorded because the occurrence is already paid. */
+  onConfirm: (values: RecurringPaymentValues) => boolean;
   onUnmark: () => void;
 }
 
@@ -61,9 +62,11 @@ export function RecurringPaymentDialog({
   const [amount, setAmount] = useState("");
   const [accountId, setAccountId] = useState("");
   const [date, setDate] = useState("");
+  const [alreadyPaid, setAlreadyPaid] = useState(false);
 
   useEffect(() => {
     if (!open || expense == null) return;
+    setAlreadyPaid(false);
     setAmount(
       expense.estimatedAmount == null ? "" : String(expense.estimatedAmount),
     );
@@ -95,13 +98,17 @@ export function RecurringPaymentDialog({
   function handleConfirm(e: React.FormEvent) {
     e.preventDefault();
     if (!canSubmit) return;
-    onConfirm({
+    const recorded = onConfirm({
       amount: Math.abs(amountNumber),
       accountId: accountId as AccountId,
       date,
       description: undefined,
     });
-    onOpenChange(false);
+    if (recorded) {
+      onOpenChange(false);
+    } else {
+      setAlreadyPaid(true);
+    }
   }
 
   return (
@@ -208,6 +215,13 @@ export function RecurringPaymentDialog({
               />
             </div>
 
+            {alreadyPaid && (
+              <p role="alert" className="text-sm text-destructive">
+                Already paid: {periodLabel(period)} already has a payment, so
+                nothing was recorded.
+              </p>
+            )}
+
             <DialogFooter>
               <Button
                 type="button"
@@ -216,7 +230,7 @@ export function RecurringPaymentDialog({
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={!canSubmit}>
+              <Button type="submit" disabled={!canSubmit || alreadyPaid}>
                 <Check className="mr-1 h-4 w-4" />
                 Mark paid
               </Button>

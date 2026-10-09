@@ -163,9 +163,9 @@ export function Recurring({ appData }: RecurringProps) {
   );
 
   const handleConfirmPayment = useCallback(
-    (values: RecurringPaymentValues) => {
-      if (paying == null) return;
-      appData.markRecurringExpensePaid({
+    (values: RecurringPaymentValues): boolean => {
+      if (paying == null) return false;
+      const payment = appData.markRecurringExpensePaid({
         recurringExpense: paying.expense,
         period: paying.period,
         amount: values.amount,
@@ -173,6 +173,7 @@ export function Recurring({ appData }: RecurringProps) {
         date: values.date,
         description: values.description,
       });
+      return payment != null;
     },
     [appData, paying],
   );

@@ -32,6 +32,10 @@ import {
   inferCurrencyFromAccountName,
   normalizeAccountLookupKey,
 } from "./importTransactionsCsv";
+import {
+  newRecurringPayment,
+  type MarkRecurringExpensePaidInput,
+} from "./recurringPayments";
 
 export interface ImportTransactionsResult {
   transactionsImported: number;
@@ -42,15 +46,6 @@ export interface ImportTransactionsResult {
 export interface AddBalanceAdjustmentInput {
   accountId: AccountId;
   targetBalance: number;
-  date: string;
-  description?: string;
-}
-
-export interface MarkRecurringExpensePaidInput {
-  recurringExpense: RecurringExpense;
-  period: string;
-  amount: number;
-  accountId: AccountId;
   date: string;
   description?: string;
 }
@@ -570,32 +565,12 @@ export function useAppData() {
     [data, persist],
   );
 
+  /** Returns null, writing nothing, when the occurrence is already paid. */
   const markRecurringExpensePaid = useCallback(
-    (input: MarkRecurringExpensePaidInput) => {
-      const { recurringExpense, period, amount, accountId, date } = input;
-      const account = data.accounts.find((a) => a.id === accountId);
-      const currency = account?.currency ?? recurringExpense.currency;
-      const description =
-        input.description?.trim() && input.description.trim().length > 0
-          ? input.description.trim()
-          : recurringExpense.name;
+    (input: MarkRecurringExpensePaidInput): Transaction | null => {
       const createdAt = new Date().toISOString();
-
-      const newTransaction: Transaction = {
-        id: generateId() as TransactionId,
-        date,
-        fromAccountId: accountId,
-        toAccountId: null,
-        fromAmount: Math.abs(amount),
-        toAmount: null,
-        fromCurrency: currency,
-        toCurrency: null,
-        category: cleanCategoryName(recurringExpense.category) || undefined,
-        recurringExpenseId: recurringExpense.id,
-        period,
-        description,
-        createdAt,
-      };
+      const newTransaction = newRecurringPayment(data, input, createdAt);
+      if (newTransaction == null) return null;
 
       const categories = appendMissingCategories(
         data.categories,
