@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { interceptSave } from "cmd-s";
 import { submitClosestForm } from "./formSubmit";
 import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
-import { Loader2, CloudUpload } from "lucide-react";
+import { Loader2, CloudUpload, CloudOff } from "lucide-react";
 import { useAppData } from "./useAppData";
 import { AuthProvider, useAuth } from "./auth";
 import { NavBar } from "./components/NavBar";
@@ -81,20 +81,31 @@ function AuthenticatedApp() {
   // ⌘S / Ctrl+S, instead of the browser's "Save page" dialog. Inside a form it
   // submits that form; anywhere else there is nothing left to write — every
   // change already wrote itself — so it only confirms, or repeats the storage
-  // error if the last write did not land. Top of the screen: the nav bar owns
-  // the bottom.
-  const { storageError } = appData;
+  // error if the last write did not land, and never says "Saved" while the
+  // cloud is failing. Top of the screen: the nav bar owns the bottom.
+  const { storageError, cloudError } = appData;
   useEffect(
     () =>
       interceptSave({
         position: "top",
         onSave: () => {
           if (submitClosestForm(document.activeElement)) return;
-          return storageError ?? "Saved";
+          if (storageError != null) return storageError;
+          if (cloudError != null) {
+            return "Saved on this device — cloud sync failed";
+          }
+          return "Saved";
         },
       }),
-    [storageError],
+    [storageError, cloudError],
   );
+
+  const syncFailed = cloudError != null && !appData.cloudSyncing;
+  const syncTitle = syncFailed
+    ? cloudError
+    : appData.lastSyncedAt != null
+      ? `Last synced at ${new Date(appData.lastSyncedAt).toLocaleTimeString()}`
+      : "Not synced yet in this session";
 
   return (
     <div className="mx-auto min-h-dvh max-w-lg pb-[calc(5.5rem+env(safe-area-inset-bottom))]">
@@ -124,14 +135,21 @@ function AuthenticatedApp() {
       <button
         onClick={appData.forceCloudSync}
         disabled={appData.cloudSyncing}
-        className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom))] right-3 z-40 flex items-center gap-1.5 rounded-full bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow-lg active:scale-95 disabled:opacity-50"
+        title={syncTitle}
+        className={`fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom))] right-3 z-40 flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium shadow-lg active:scale-95 disabled:opacity-50 ${
+          syncFailed
+            ? "bg-destructive text-destructive-foreground"
+            : "bg-primary text-primary-foreground"
+        }`}
       >
         {appData.cloudSyncing ? (
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        ) : syncFailed ? (
+          <CloudOff className="h-3.5 w-3.5" />
         ) : (
           <CloudUpload className="h-3.5 w-3.5" />
         )}
-        Sync
+        {syncFailed ? "Sync failed — retry" : "Sync"}
       </button>
 
       <NavBar />

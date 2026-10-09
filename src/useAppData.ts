@@ -50,6 +50,10 @@ export interface AddBalanceAdjustmentInput {
   description?: string;
 }
 
+/** Shown until a cloud write succeeds again. */
+const CLOUD_SYNC_FAILED =
+  "Sync failed — your changes are saved on this device.";
+
 function categoryNamesMatch(
   left: string | null | undefined,
   right: string | null | undefined,
@@ -95,13 +99,30 @@ export function useAppData() {
   const cloudSaveInFlight = useRef(false);
   const pendingCloudSave = useRef<AppData | null>(null);
   const [cloudSyncing, setCloudSyncing] = useState(false);
+  // The last cloud failure, kept until a cloud write succeeds; and when one
+  // last did. Only reported here: no save or merge logic depends on them.
+  const [cloudError, setCloudError] = useState<string | null>(null);
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+
+  const cloudSyncSucceeded = useCallback(() => {
+    setCloudError(null);
+    setLastSyncedAt(new Date().toISOString());
+  }, []);
+
+  const cloudSyncFailed = useCallback((what: string, err: unknown) => {
+    console.error(`[cloud-sync] ${what} failed:`, err);
+    setCloudError(CLOUD_SYNC_FAILED);
+  }, []);
 
   const flushCloudSave = useCallback(
     (uid: string, dataToSave: AppData) => {
       cloudSaveInFlight.current = true;
       setCloudSyncing(true);
+      let landed = false;
       saveCloudData(uid, dataToSave)
         .then((savedData) => {
+          landed = true;
+          cloudSyncSucceeded();
           if (pendingCloudSave.current != null) return;
           try {
             saveAppData(savedData);
@@ -116,7 +137,12 @@ export function useAppData() {
           }
         })
         .catch((err: unknown) => {
-          console.error("[cloud-sync] save failed:", err);
+          if (landed) {
+            // The cloud write landed; what failed was mirroring it locally.
+            console.error("[cloud-sync] save failed:", err);
+          } else {
+            cloudSyncFailed("save", err);
+          }
         })
         .finally(() => {
           const queued = pendingCloudSave.current;
@@ -129,7 +155,7 @@ export function useAppData() {
           }
         });
     },
-    [],
+    [cloudSyncSucceeded, cloudSyncFailed],
   );
 
   useEffect(() => {
@@ -144,26 +170,28 @@ export function useAppData() {
           const merged = mergeAppData(local, cloudData);
           setData(merged);
           saveAppData(merged);
-          saveCloudData(user.uid, merged).catch((err: unknown) =>
-            console.error("[cloud-sync] initial merge push failed:", err),
+          saveCloudData(user.uid, merged).then(
+            cloudSyncSucceeded,
+            (err: unknown) => cloudSyncFailed("initial merge push", err),
           );
         } else {
-          saveCloudData(user.uid, local).catch((err: unknown) =>
-            console.error("[cloud-sync] initial upload failed:", err),
+          saveCloudData(user.uid, local).then(
+            cloudSyncSucceeded,
+            (err: unknown) => cloudSyncFailed("initial upload", err),
           );
         }
         setCloudSynced(true);
       })
       .catch((err: unknown) => {
         if (cancelled) return;
-        console.error("[cloud-sync] initial load failed:", err);
+        cloudSyncFailed("initial load", err);
         setCloudSynced(true);
       });
 
     return () => {
       cancelled = true;
     };
-  }, [user, cloudSynced]);
+  }, [user, cloudSynced, cloudSyncSucceeded, cloudSyncFailed]);
 
   const persist = useCallback(
     (next: AppData) => {
@@ -725,6 +753,8 @@ export function useAppData() {
     data,
     storageError,
     cloudSyncing,
+    cloudError,
+    lastSyncedAt,
     accountBalances,
     accountsMap,
     forceCloudSync,
