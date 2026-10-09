@@ -4,3 +4,19 @@ dist
 *.local
 .env
 service-account*.json
+
+# Dependencies and build output
+.tmp/
+*.tsbuildinfo
+
+# Environment and credentials: never committed
+.env.*
+!.env.example
+*firebase-adminsdk*.json
+*service-account*.json
+*serviceAccount*.json
+*.pem
+*.p12
+
+# Claude Code per-machine settings
+.claude/settings.local.json
