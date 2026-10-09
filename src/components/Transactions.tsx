@@ -420,6 +420,8 @@ export function Transactions({ appData }: TransactionsProps) {
               tx.balanceAdjustment?.accountId ??
               tx.toAccountId ??
               tx.fromAccountId;
+            const txName =
+              tx.description.length > 0 ? tx.description : "transaction";
 
             return (
               <Card
@@ -530,6 +532,7 @@ export function Transactions({ appData }: TransactionsProps) {
                           variant="ghost"
                           size="icon"
                           className="h-7 w-7"
+                          aria-label={`Edit ${txName}`}
                           onClick={(e) => {
                             e.stopPropagation();
                             setEditingTransaction(tx);
@@ -543,6 +546,7 @@ export function Transactions({ appData }: TransactionsProps) {
                       variant="ghost"
                       size="icon"
                       className="h-7 w-7 text-destructive hover:text-destructive"
+                      aria-label={`Delete ${txName}`}
                       onClick={(e) => {
                         e.stopPropagation();
                         setDeletingTransaction(tx);

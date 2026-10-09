@@ -98,6 +98,7 @@ export function Categories({ appData }: CategoriesProps) {
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8"
+                aria-label={`Edit ${category.name}`}
                 onClick={() => setEditingCategory(category)}
               >
                 <Pencil className="h-3.5 w-3.5" />
@@ -106,6 +107,7 @@ export function Categories({ appData }: CategoriesProps) {
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8 text-destructive hover:text-destructive"
+                aria-label={`Delete ${category.name}`}
                 onClick={() => setDeletingCategory(category)}
               >
                 <Trash2 className="h-3.5 w-3.5" />
