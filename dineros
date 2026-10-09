@@ -4,4 +4,14 @@ set -euo pipefail
 # Paths given to the CLI (e.g. export --out) are relative to where it was run.
 export DINEROS_INVOKED_FROM="$PWD"
 cd "$(dirname "$0")"
+
+# firebase-admin 14 declares Node >= 22. Warn on stderr (stdout stays clean
+# for --json) but run anyway: it still loads on older Node today.
+node_version="$(node --version 2>/dev/null || echo unknown)"
+node_major="${node_version#v}"
+node_major="${node_major%%.*}"
+if ! [[ "$node_major" =~ ^[0-9]+$ ]] || (( node_major < 22 )); then
+  echo "warning: firebase-admin needs Node ≥ 22 (found $node_version); run \`nvm use\` in $(pwd)" >&2
+fi
+
 exec npx --no-install tsx cli/dineros.ts "$@"
