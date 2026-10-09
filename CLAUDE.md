@@ -22,6 +22,11 @@ Read the current state first (`accounts`, `categories`, `recurring`) so
 categories and account names match what is already there, and prefer
 `--dry-run` when the request is ambiguous. Full docs: `cli/README.md`.
 
+`./dineros export [--out <dir>]` saves a snapshot of the whole document,
+exactly as Firestore stores it, to `exports/dineros-YYYY-MM-DD.json` (local
+date; `exports/` is gitignored because this repo is public). It only reads
+Firestore and never overwrites an earlier snapshot.
+
 ## Checks
 
 Run them under Node 22 (`.nvmrc`; `nvm use`). `npm run check` is the gate CI

@@ -1,7 +1,16 @@
+import { resolve } from "node:path";
 import type { AppData } from "../src/types";
 import { describeRule, periodLabel } from "../src/recurrence";
 import { boolFlag, parseArgs, stringFlag, UsageError, type ParsedArgs } from "./args";
-import { DEFAULT_EMAIL, loadAppData, mutateAppData, resolveUid } from "./client";
+import {
+  DEFAULT_EMAIL,
+  DEFAULT_EXPORT_DIR,
+  loadAppData,
+  loadRawAppDocument,
+  mutateAppData,
+  resolveUid,
+} from "./client";
+import { exportCounts, serializeExport, writeExport } from "./export";
 import { describeTransaction } from "./resolve";
 import {
   buildAddRecurring,
@@ -29,6 +38,7 @@ Commands
   add-recurring               Create a recurring expense
   pay-recurring               Mark a recurring occurrence as paid
   whoami                      Show which Dineros account the CLI is writing to
+  export                      Save a JSON snapshot of the whole document (read-only)
 
 Global flags
   --email <address>           Dineros account (default ${DEFAULT_EMAIL})
@@ -67,6 +77,12 @@ pay-recurring
   --date <YYYY-MM-DD>         Defaults to the occurrence's due date
   --description <text>        Defaults to the expense's name
   --force                     Allow a month the rule does not cover, or a re-payment
+
+export
+  --out <dir>                 Folder for dineros-YYYY-MM-DD.json (default: exports/
+                              in this repo, which is gitignored). Reads Firestore,
+                              never writes it, and never overwrites an earlier
+                              snapshot: a second one that day gets a -2 suffix.
 `;
 
 // --- Entry point ---
@@ -95,6 +111,37 @@ async function run(args: ParsedArgs): Promise<void> {
     emit(args, {
       json: { email, uid },
       lines: [`${email} → users/${uid}/data/appData`],
+    });
+    return;
+  }
+
+  if (args.command === "export") {
+    const out = stringFlag(args, "out");
+    // The ./dineros wrapper cd's into the repo; resolve --out against the
+    // directory it was run from.
+    const dir =
+      out == null
+        ? DEFAULT_EXPORT_DIR
+        : resolve(process.env.DINEROS_INVOKED_FROM ?? process.cwd(), out);
+    const { path: document, data } = await loadRawAppDocument(uid);
+    if (data == null) {
+      throw new UsageError(
+        `${email} has no Dineros document yet (users/${uid}/data/appData); nothing to export.`,
+      );
+    }
+    const exportedAt = new Date();
+    const file = await writeExport(
+      dir,
+      serializeExport({ exportedAt: exportedAt.toISOString(), document, data }),
+      exportedAt,
+    );
+    const counts = exportCounts(data);
+    emit(args, {
+      json: { file, counts },
+      lines: [
+        `Wrote ${file}`,
+        ...Object.entries(counts).map(([key, count]) => `  ${key}: ${count}`),
+      ],
     });
     return;
   }

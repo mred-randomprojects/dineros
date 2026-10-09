@@ -61,7 +61,17 @@ which computes and prints the change without writing it.
 # Recurring expenses
 ./dineros add-recurring --name Netflix --amount 9990 --account "Galicia ARS" --day 15 --category Streaming
 ./dineros pay-recurring --name Netflix --period 2026-09
+
+# Snapshot (read-only)
+./dineros export                    # exports/dineros-YYYY-MM-DD.json in this repo
+./dineros export --out ~/Backups    # or any other folder
 ```
+
+`export` writes the Firestore document exactly as stored (nothing normalized
+or dropped), named by the local date. It never writes to Firestore and never
+overwrites an earlier snapshot: a second one on the same day gets a `-2`
+suffix. `exports/` is gitignored — this repo is public, and the file is your
+whole financial history.
 
 Accounts, categories and recurring expenses can be named by id, by exact name,
 or by any unique substring — `--from galicia` is enough. An ambiguous name is

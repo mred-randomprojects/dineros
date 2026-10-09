@@ -13,6 +13,9 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 export const DEFAULT_KEY_PATH = resolve(homedir(), ".dineros/service-account.json");
 
+/** Where `export` writes by default; gitignored, since the repo is public. */
+export const DEFAULT_EXPORT_DIR = resolve(repoRoot, "exports");
+
 export const SETUP_HINT = `The CLI needs a Firebase service account key for the Dineros project:
   1. https://console.firebase.google.com → Dineros → Project settings → Service accounts
   2. "Generate new private key" and save the JSON
@@ -194,6 +197,23 @@ function payloadFromAppData(data: AppData): Record<string, unknown> {
     deletedTransactions: data.deletedTransactions,
     deletedRecurringExpenses: data.deletedRecurringExpenses,
   }) as Record<string, unknown>;
+}
+
+/**
+ * The document exactly as Firestore holds it, for backups: no normalizing,
+ * so fields and records the app's normalizers would drop are kept. Read-only.
+ */
+export async function loadRawAppDocument(
+  uid: string,
+): Promise<{ path: string; data: Record<string, unknown> | null }> {
+  const ref = userDocRef(uid);
+  try {
+    const snap = await ref.get();
+    const data = snap.data();
+    return { path: ref.path, data: data == null ? null : { ...data } };
+  } catch (error: unknown) {
+    throw withSetupHint("Could not read your Dineros data", error);
+  }
 }
 
 export async function loadAppData(uid: string): Promise<AppData> {
